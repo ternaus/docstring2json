@@ -39,7 +39,7 @@ def output_dir() -> Path:
 
 
 @pytest.mark.parametrize("test_func,expected_text", [
-    (sample_function, ["# sample_function", "## Parameters", "## Returns", "## Example"]),
+    (sample_function, ["# sample_function", "**Parameters**", "**Returns**", "**Example**"]),
     (private_function, ["# private_function", "A private function"])
 ])
 def test_function_to_markdown(test_func, expected_text: list[str], output_dir: Path) -> None:

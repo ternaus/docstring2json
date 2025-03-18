@@ -101,7 +101,7 @@ def mock_importlib(mock_package: Any) -> None:
 
 
 @pytest.mark.parametrize("test_class,expected_text", [
-    (SampleClass, ["# SampleClass", "## Parameters", "## Returns", "## Example", "## Note"]),
+    (SampleClass, ["# SampleClass", "**Parameters**", "**Returns**", "**Example**", "**Note**"]),
     (_PrivateSampleClass, ["# _PrivateSampleClass"])
 ])
 def test_class_to_markdown(test_class: Any, expected_text: list[str], output_dir: Path) -> None:

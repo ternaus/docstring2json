@@ -98,7 +98,9 @@ def format_section_content(section: str, content: str) -> str:
             elif line_stripped:
                 lines.append(line_stripped)
         return "```python\n" + "\n".join(lines) + "\n```"
-    return content
+
+    # Wrap content in PreserveFormat component for better formatting preservation
+    return f"<PreserveFormat>\n{content}\n</PreserveFormat>"
 
 
 def _format_signature(obj: type | Callable, params: list[Parameter]) -> str:
@@ -186,27 +188,30 @@ def _extract_param_docs(param: Parameter, param_docs: dict, obj: type | Callable
 
 
 def _build_params_table(params: list[Parameter], parsed: dict, obj: type | Callable) -> list[str]:
-    """Build parameters table from parameter information.
+    """Build a parameters table from the docstring and signature.
 
     Args:
-        params (list[Parameter]): List of parameter objects
+        params (list): List of parameter objects from signature
         parsed (dict): Parsed docstring dictionary
         obj (Union[type, Callable]): Class or function object
 
     Returns:
-        List of markdown strings for parameter table
+        List of markdown strings for the parameters table
     """
-    if not parsed.get("Args"):
+    # Skip parameters table if no parameters
+    if not params or all(param.name in {"self", "cls"} for param in params):
         return []
 
     result = [
-        "\n## Parameters\n",
+        "\n**Parameters**\n",
         "| Name | Type | Description |\n",
         "|------|------|-------------|\n",
     ]
 
     # Create a dictionary to lookup parameter info from docstring
-    param_docs = {arg["name"]: arg for arg in parsed["Args"]}
+    param_docs = {}
+    if "Args" in parsed:
+        param_docs = {arg["name"]: arg for arg in parsed["Args"]}
 
     for param in params:
         doc_type, desc = _extract_param_docs(param, param_docs, obj)
@@ -237,7 +242,7 @@ def _process_other_sections(parsed: dict) -> list[str]:
 
             result.extend(
                 [
-                    f"\n## {section}\n",
+                    f"\n**{section}**\n",
                     format_section_content(section, processed_content),
                     "\n",
                 ],
@@ -380,22 +385,21 @@ def _build_table_of_contents(classes: list[tuple[str, object]], functions: list[
     Returns:
         Markdown formatted table of contents
     """
-    toc = ["## Contents\n\n"]
+    toc = ["# Table of Contents\n\n"]
 
     # Add classes to ToC
-    if classes:
-        toc.append("### Classes\n\n")
-        for name, _ in sorted(classes):
-            toc.append(f"- [{name}](#{name.lower()})\n")
-        toc.append("\n")
+    for name, obj in sorted(classes):
+        module_name = obj.__module__
+        anchor_id = f"{module_name}.{name}"
+        toc.append(f"* [{name}](#{anchor_id})\n")
 
     # Add functions to ToC
-    if functions:
-        toc.append("### Functions\n\n")
-        for name, _ in sorted(functions):
-            toc.append(f"- [{name}](#{name.lower()})\n")
-        toc.append("\n")
+    for name, obj in sorted(functions):
+        module_name = obj.__module__
+        anchor_id = f"{module_name}.{name}"
+        toc.append(f"* [{name}](#{anchor_id})\n")
 
+    toc.append("\n")
     return "".join(toc)
 
 
@@ -412,15 +416,20 @@ def _process_documentation_items(items: list[tuple[str, object]], section_title:
     if not items:
         return ""
 
-    content = [f"## {section_title}\n\n"]
+    content = [f"**{section_title}**\n\n"]
 
-    for _name, obj in sorted(items):
+    for name, obj in sorted(items):
         md = class_to_markdown(obj)
+
+        # Add anchor for the item
+        module_name = obj.__module__
+        anchor_id = f"{module_name}.{name}"
+        content.append(f'<a id="{anchor_id}"></a>\n\n')
 
         # Adjust heading level
         lines = md.split("\n")
         if lines and lines[0].startswith("# "):
-            lines[0] = "### " + lines[0][2:]
+            lines[0] = "## " + lines[0][2:]
 
         content.append("\n".join(lines) + "\n\n")
 
@@ -445,6 +454,10 @@ def file_to_markdown(module: object, module_name: str) -> str:
 
     # Add table of contents
     content.append(_build_table_of_contents(classes, functions))
+
+    # Add anchor and module name
+    content.append(f'<a id="{module_name}"></a>\n\n')
+    content.append(f"# {module_name}\n\n")
 
     # Add class documentation
     content.append(_process_documentation_items(classes, "Classes"))
@@ -635,8 +648,8 @@ def _process_module_file(
         try:
             md_content = file_to_markdown(module, module_name)
 
-            # Write to file
-            output_file = module_dir / f"{file_name}.md"
+            # Write to file with .mdx extension
+            output_file = module_dir / f"{file_name}.mdx"
             logger.debug(f"Writing to file: {output_file}")
             output_file.write_text(md_content)
         except (ValueError, TypeError, AttributeError):
