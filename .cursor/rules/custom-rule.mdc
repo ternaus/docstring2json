@@ -1,0 +1,11 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+# Your rule content
+
+- we use python 3.10 typing => no Optional, Tuple, List
+- We use pytest with parametrize for testing
+x
