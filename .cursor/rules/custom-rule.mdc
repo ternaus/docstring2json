@@ -8,4 +8,4 @@ alwaysApply: true
 
 - we use python 3.10 typing => no Optional, Tuple, List
 - We use pytest with parametrize for testing
-x
+- We use logging and not print statements

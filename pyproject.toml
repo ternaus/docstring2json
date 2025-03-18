@@ -58,7 +58,6 @@ urls.homepage = "https://github.com/ternaus/google-docstring-2md"
 scripts.docstring2md = "google_docstring_2md.__main__:main"
 
 [tool.setuptools]
-package-dir = { "" = "src" }
 packages = [ "google_docstring_2md" ]
 
 [tool.setuptools.package-data]
