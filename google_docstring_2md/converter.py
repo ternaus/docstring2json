@@ -7,7 +7,9 @@ docstrings into Markdown documentation.
 import importlib
 import inspect
 import logging
+import os
 import pkgutil
+import re
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -39,28 +41,33 @@ def get_signature_params(obj: type | Callable) -> list[Parameter]:
     Returns:
         List of Parameter objects containing name, type, default value
     """
-    signature = inspect.signature(obj)
-    params = []
+    try:
+        signature = inspect.signature(obj)
+        params = []
 
-    for name, param in signature.parameters.items():
-        # Get parameter type annotation
-        if param.annotation is not inspect.Signature.empty:
-            if hasattr(param.annotation, "__name__"):
-                param_type = param.annotation.__name__
+        for name, param in signature.parameters.items():
+            # Get parameter type annotation
+            if param.annotation is not inspect.Signature.empty:
+                if hasattr(param.annotation, "__name__"):
+                    param_type = param.annotation.__name__
+                else:
+                    param_type = str(param.annotation).replace("typing.", "")
+                    # Clean up typing annotations (remove typing. prefix)
+                    if "'" in param_type:
+                        param_type = param_type.split("'")[1]
             else:
-                param_type = str(param.annotation).replace("typing.", "")
-                # Clean up typing annotations (remove typing. prefix)
-                if "'" in param_type:
-                    param_type = param_type.split("'")[1]
-        else:
-            param_type = ""
+                param_type = ""
 
-        # Get default value
-        default = param.default if param.default is not inspect.Signature.empty else None
+            # Get default value
+            default = param.default if param.default is not inspect.Signature.empty else None
 
-        params.append(Parameter(name=name, type=param_type, default=default))
-
-    return params
+            params.append(Parameter(name=name, type=param_type, default=default))
+    except (ValueError, TypeError):
+        # Handle built-in types, Exception classes, or other types without a signature
+        logger.debug("Could not get signature for %s, returning empty parameters list", obj.__name__)
+        return []
+    else:
+        return params
 
 
 def format_default_value(value: object) -> str:
@@ -77,6 +84,29 @@ def format_default_value(value: object) -> str:
     if isinstance(value, str):
         return f"'{value}'"
     return str(value)
+
+
+def _escape_mdx_special_chars(text: str) -> str:
+    """Escape special characters that might cause issues in MDX files.
+
+    Args:
+        text (str): Text to escape
+
+    Returns:
+        str: Escaped text safe for MDX files
+    """
+    if not text:
+        return text
+
+    # Escape characters that might cause parsing issues in MDX
+    escaped = text.replace("<", "\\<").replace(">", "\\>").replace("=", "\\=")
+
+    # Replace multiple backslashes (e.g. \\n) with a code format
+    # This is to avoid issues with LaTeX-like code that uses backslashes
+    escaped = re.sub(r"\\{2,}", lambda m: "`" + m.group(0) + "`", escaped)
+
+    # Escape curly braces, which are special in MDX/JSX
+    return escaped.replace("{", "\\{").replace("}", "\\}")
 
 
 def format_section_content(section: str, content: str) -> str:
@@ -99,8 +129,8 @@ def format_section_content(section: str, content: str) -> str:
                 lines.append(line_stripped)
         return "```python\n" + "\n".join(lines) + "\n```"
 
-    # Wrap content in PreserveFormat component for better formatting preservation
-    return f"<PreserveFormat>\n{content}\n</PreserveFormat>"
+    # Use code blocks instead of PreserveFormat
+    return "```\n" + content + "\n```"
 
 
 def _format_signature(obj: type | Callable, params: list[Parameter]) -> str:
@@ -114,7 +144,8 @@ def _format_signature(obj: type | Callable, params: list[Parameter]) -> str:
         Formatted signature as string
     """
     # Format signature
-    param_str = ", ".join(f"{p.name}={format_default_value(p.default)}" for p in params)
+    param_str = "" if not params else ", ".join(f"{p.name}={format_default_value(p.default)}" for p in params)
+
     signature = f"{obj.__name__}({param_str})"
 
     # Handle return annotation for functions
@@ -140,6 +171,10 @@ def _process_description(parsed: dict) -> str:
     desc = parsed["Description"]
     if not isinstance(desc, str):
         desc = str(desc)
+
+    # Escape special characters in the description
+    desc = _escape_mdx_special_chars(desc)
+
     return f"{desc}\n"
 
 
@@ -184,6 +219,10 @@ def _extract_param_docs(param: Parameter, param_docs: dict, obj: type | Callable
     if not isinstance(doc_type, str):
         doc_type = str(doc_type)
 
+    # Escape special characters for both type and description
+    doc_type = _escape_mdx_special_chars(doc_type)
+    desc = _escape_mdx_special_chars(desc)
+
     return doc_type, desc
 
 
@@ -215,7 +254,9 @@ def _build_params_table(params: list[Parameter], parsed: dict, obj: type | Calla
 
     for param in params:
         doc_type, desc = _extract_param_docs(param, param_docs, obj)
-        result.append(f"| {param.name} | {doc_type} | {desc} |\n")
+        # Escape the parameter name as well
+        param_name = _escape_mdx_special_chars(param.name)
+        result.append(f"| {param_name} | {doc_type} | {desc} |\n")
 
     return result
 
@@ -287,9 +328,10 @@ def class_to_markdown(obj: type | Callable) -> str:
     if description:
         sections.append(description)
 
-    # Add parameters table
-    param_table = _build_params_table(params, parsed, obj)
-    sections.extend(param_table)
+    # Add parameters table if we have parameters
+    if params:
+        param_table = _build_params_table(params, parsed, obj)
+        sections.extend(param_table)
 
     # Add remaining sections
     other_sections = _process_other_sections(parsed)
@@ -646,20 +688,107 @@ def _process_module_file(
 
         # Generate markdown content
         try:
+            # Wrap the markdown generation in a try-except block to handle issues
             md_content = file_to_markdown(module, module_name)
 
             # Write to file with .mdx extension
             output_file = module_dir / f"{file_name}.mdx"
             logger.debug(f"Writing to file: {output_file}")
             output_file.write_text(md_content)
-        except (ValueError, TypeError, AttributeError):
+        except (ValueError, TypeError, AttributeError, ImportError):
             logger.exception(f"Failed to generate markdown for module {module_name}")
             return False
         else:
             return True
-    except (ValueError, TypeError, AttributeError):
+    except (ValueError, TypeError, AttributeError, ImportError, OSError):
         logger.exception(f"Error processing file {file_path}")
         return False
+
+
+def _generate_module_index_files(output_dir: Path) -> None:
+    """Generate index files for modules and submodules.
+
+    This function walks through the output directory structure and creates index.mdx files
+    for each directory, listing all the available documentation files.
+
+    Args:
+        output_dir (Path): Root directory of the generated documentation
+    """
+    logger.info("Generating module index files...")
+
+    # Process each directory in the output
+    for root, dirs, files in os.walk(output_dir):
+        root_path = Path(root)
+        rel_path = root_path.relative_to(output_dir)
+
+        # Skip the root directory, we'll handle it separately
+        if root_path == output_dir:
+            continue
+
+        # Get module name from relative path
+        module_name = str(rel_path).replace(os.path.sep, ".")
+
+        # Get all .mdx files, excluding any existing index.mdx
+        mdx_files = [f for f in files if f.endswith(".mdx") and f != "index.mdx"]
+
+        # Create links for each file
+        links = [f"- [{file[:-4]}]({file[:-4]})" for file in sorted(mdx_files)]
+
+        # Create links for each subdirectory
+        links.extend([f"- [{dir_name}]({dir_name}/index)" for dir_name in sorted(dirs)])
+
+        # Only create an index file if there are links
+        if links:
+            # Create content for the index file
+            content = [
+                f"# {module_name}",
+                "",
+                "## Contents",
+                "",
+            ]
+            content.extend(links)
+
+            # Write the index file
+            index_path = root_path / "index.mdx"
+            index_path.write_text("\n".join(content))
+            logger.debug(f"Created index file at {index_path}")
+
+    # Create root index file
+    _generate_root_index_file(output_dir)
+
+
+def _generate_root_index_file(output_dir: Path) -> None:
+    """Generate the root index file.
+
+    Args:
+        output_dir (Path): Root directory of the generated documentation
+    """
+    # Get direct subdirectories and files
+    subdirs = [d for d in output_dir.iterdir() if d.is_dir()]
+    files = [f for f in output_dir.iterdir() if f.is_file() and f.name.endswith(".mdx") and f.name != "index.mdx"]
+
+    # Create links
+    links = []
+
+    # Add links to submodules first
+    links.extend([f"- [{subdir.name}]({subdir.name}/index)" for subdir in sorted(subdirs)])
+
+    # Add links to root level files
+    links.extend([f"- [{file.stem}]({file.stem})" for file in sorted(files)])
+
+    # Create content
+    content = [
+        "# API Documentation",
+        "",
+        "## Modules",
+        "",
+    ]
+    content.extend(links)
+
+    # Write the index file
+    index_path = output_dir / "index.mdx"
+    index_path.write_text("\n".join(content))
+    logger.debug(f"Created root index file at {index_path}")
 
 
 def package_to_markdown_structure(
@@ -724,6 +853,9 @@ def package_to_markdown_structure(
             except (ValueError, TypeError, AttributeError, ImportError, OSError):
                 logger.exception(f"Error processing file {file_path}")
                 error_count += 1
+
+        # Generate index files for all modules and submodules
+        _generate_module_index_files(output_dir)
 
         logger.info(
             f"Documentation generation complete. Processed {len(file_to_modules)} files: "
