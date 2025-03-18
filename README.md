@@ -10,21 +10,57 @@ pip install google-docstring-2md
 
 ## Usage
 
+### Command-line Interface
+
+The simplest way to use google-docstring-2md is through the command-line interface:
+
+```bash
+# Generate documentation for a package
+docstring2md albumentations -o ./albumentations_docs
+
+# Exclude private classes and methods
+docstring2md pandas --exclude-private -o ./pandas_docs
+```
+
+### Python API
+
+You can also use the package programmatically:
+
 ```python
 from pathlib import Path
-from google_docstring_2md import class_to_markdown, package_to_markdown_structure
+from google_docstring_2md import class_to_markdown, file_to_markdown, package_to_markdown_structure
 
-# Generate markdown for a single class
-from albumentations import ElasticTransform
-markdown = class_to_markdown(ElasticTransform)
+# Document a single class
+from some_module import SomeClass
+markdown = class_to_markdown(SomeClass)
 print(markdown)
 
-# Generate markdown files for an entire package
-package_to_markdown_structure("albumentations", Path("./docs"))
+# Document a module and save to a file
+import some_module
+markdown = file_to_markdown(some_module, "some_module")
+Path("some_module.md").write_text(markdown)
 
-# Generate markdown files excluding private members (starting with _)
-package_to_markdown_structure("albumentations", Path("./docs"), exclude_private=True)
+# Document an entire package
+output_dir = Path("./docs")
+package_to_markdown_structure("numpy", output_dir, exclude_private=True)
 ```
+
+### Output Directory Structure
+
+The output directory will have a structure that mirrors the package structure, but simplifies it:
+
+```
+output_dir/
+├── module1.md       # Contains all classes and functions from module1.py
+├── submodule/       # Folder from package.submodule
+│   ├── module2.md   # Contains all classes and functions from package.submodule.module2
+```
+
+Each markdown file includes:
+1. A heading with the module name
+2. A table of contents
+3. Sections for classes and functions
+4. Code examples preserved from docstrings
 
 ## Features
 
@@ -91,7 +127,8 @@ transform = A.ElasticTransform(alpha=1, sigma=50, p=0.5)
 ## Requirements
 
 - Python 3.10+
-- `google-docstring-parser` for docstring parsing
+- `docstring-parser` for docstring parsing
+- `tqdm` for progress reporting
 
 ## License
 

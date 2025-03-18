@@ -4,6 +4,10 @@ This package provides utilities to convert Python classes and functions with Goo
 docstrings into Markdown documentation.
 """
 
-from google_docstring_2md.converter import class_to_markdown, package_to_markdown_structure
+from google_docstring_2md.converter import (
+    class_to_markdown,
+    file_to_markdown,
+    package_to_markdown_structure,
+)
 
-__all__ = ["class_to_markdown", "package_to_markdown_structure"]
+__all__ = ["class_to_markdown", "file_to_markdown", "package_to_markdown_structure"]

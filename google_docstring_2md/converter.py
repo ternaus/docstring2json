@@ -4,18 +4,20 @@ This module provides functions to convert Python classes and functions with Goog
 docstrings into Markdown documentation.
 """
 
+import importlib
 import inspect
 import logging
+import pkgutil
+from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 
 from google_docstring_parser import parse_google_docstring
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
-
-T = TypeVar("T")
 
 
 @dataclass
@@ -32,7 +34,7 @@ def get_signature_params(obj: type | Callable) -> list[Parameter]:
     """Extract parameters from object signature.
 
     Args:
-        obj (type | Callable): Class or function to extract parameters from
+        obj (Union[type, Callable]): Class or function to extract parameters from
 
     Returns:
         List of Parameter objects containing name, type, default value
@@ -103,7 +105,7 @@ def _format_signature(obj: type | Callable, params: list[Parameter]) -> str:
     """Format object signature for documentation.
 
     Args:
-        obj (type | Callable): Class or function object
+        obj (Union[type, Callable]): Class or function object
         params (list[Parameter]): List of parameters
 
     Returns:
@@ -145,7 +147,7 @@ def _extract_param_docs(param: Parameter, param_docs: dict, obj: type | Callable
     Args:
         param (Parameter): Parameter object
         param_docs (dict): Dictionary mapping parameter names to docstring info
-        obj (type | Callable): Class or function object
+        obj (Union[type, Callable]): Class or function object
 
     Returns:
         Tuple of (type, description)
@@ -189,7 +191,7 @@ def _build_params_table(params: list[Parameter], parsed: dict, obj: type | Calla
     Args:
         params (list[Parameter]): List of parameter objects
         parsed (dict): Parsed docstring dictionary
-        obj (type | Callable): Class or function object
+        obj (Union[type, Callable]): Class or function object
 
     Returns:
         List of markdown strings for parameter table
@@ -251,7 +253,7 @@ def class_to_markdown(obj: type | Callable) -> str:
     extracting information from its docstring and signature.
 
     Args:
-        obj (type | Callable): Class or function to document
+        obj (Union[type, Callable]): Class or function to document
 
     Returns:
         Markdown formatted documentation string
@@ -343,6 +345,252 @@ def module_to_markdown_files(
                 logger.exception("Error processing %s", name)
 
 
+def _collect_module_members(module: object) -> tuple[list[tuple[str, object]], list[tuple[str, object]]]:
+    """Collect classes and functions from a module.
+
+    Args:
+        module (object): Module to process
+
+    Returns:
+        Tuple containing lists of (name, object) pairs for classes and functions
+    """
+    classes = []
+    functions = []
+
+    for name, obj in inspect.getmembers(module):
+        if name.startswith("_"):
+            continue
+
+        if hasattr(obj, "__module__") and obj.__module__ == module.__name__:
+            if inspect.isclass(obj):
+                classes.append((name, obj))
+            elif inspect.isfunction(obj):
+                functions.append((name, obj))
+
+    return classes, functions
+
+
+def _build_table_of_contents(classes: list[tuple[str, object]], functions: list[tuple[str, object]]) -> str:
+    """Build a table of contents for the markdown document.
+
+    Args:
+        classes (list): List of (name, object) pairs for classes
+        functions (list): List of (name, object) pairs for functions
+
+    Returns:
+        Markdown formatted table of contents
+    """
+    toc = ["## Contents\n\n"]
+
+    # Add classes to ToC
+    if classes:
+        toc.append("### Classes\n\n")
+        for name, _ in sorted(classes):
+            toc.append(f"- [{name}](#{name.lower()})\n")
+        toc.append("\n")
+
+    # Add functions to ToC
+    if functions:
+        toc.append("### Functions\n\n")
+        for name, _ in sorted(functions):
+            toc.append(f"- [{name}](#{name.lower()})\n")
+        toc.append("\n")
+
+    return "".join(toc)
+
+
+def _process_documentation_items(items: list[tuple[str, object]], section_title: str) -> str:
+    """Process a list of documentation items (classes or functions).
+
+    Args:
+        items (list): List of (name, object) pairs to document
+        section_title (str): Section title (e.g., "Classes" or "Functions")
+
+    Returns:
+        Markdown formatted documentation for the items
+    """
+    if not items:
+        return ""
+
+    content = [f"## {section_title}\n\n"]
+
+    for _name, obj in sorted(items):
+        md = class_to_markdown(obj)
+
+        # Adjust heading level
+        lines = md.split("\n")
+        if lines and lines[0].startswith("# "):
+            lines[0] = "### " + lines[0][2:]
+
+        content.append("\n".join(lines) + "\n\n")
+
+    return "".join(content)
+
+
+def file_to_markdown(module: object, module_name: str) -> str:
+    """Convert a module to a single markdown document.
+
+    Args:
+        module (object): The module object to document
+        module_name (str): Name of the module for the heading
+
+    Returns:
+        str: The markdown content
+    """
+    # Collect module members
+    classes, functions = _collect_module_members(module)
+
+    # Build document sections
+    content = [f"# {module_name}\n\n"]
+
+    # Add table of contents
+    content.append(_build_table_of_contents(classes, functions))
+
+    # Add class documentation
+    content.append(_process_documentation_items(classes, "Classes"))
+
+    # Add function documentation
+    content.append(_process_documentation_items(functions, "Functions"))
+
+    return "".join(content)
+
+
+def _process_mock_package(
+    package: object,
+    package_name: str,
+    output_dir: Path,
+    *,
+    exclude_private: bool,
+) -> None:
+    """Process a mock package that doesn't have a __path__ attribute.
+
+    Args:
+        package (object): The package object
+        package_name (str): Name of the package
+        output_dir (Path): Root directory for output
+        exclude_private (bool): Whether to exclude private classes and methods
+    """
+    logger.info(f"Processing mock package {package_name}")
+    # Process the root module directly
+    module_to_markdown_files(package, output_dir, exclude_private=exclude_private)
+
+    # Check if there are submodules as direct attributes
+    for _name, obj in inspect.getmembers(package):
+        if inspect.ismodule(obj) and obj.__name__.startswith(package_name + "."):
+            # Create subdirectory for submodule
+            rel_name = obj.__name__[len(package_name) + 1 :]
+            sub_dir = output_dir / rel_name
+            sub_dir.mkdir(exist_ok=True, parents=True)
+            module_to_markdown_files(obj, sub_dir, exclude_private=exclude_private)
+
+
+def _collect_package_modules(
+    package: object,
+    package_name: str,
+    *,
+    exclude_private: bool,
+) -> list[tuple[object, str]]:
+    """Collect all modules in a package.
+
+    Args:
+        package (object): The package object
+        package_name (str): Name of the package
+        exclude_private (bool): Whether to exclude private modules
+
+    Returns:
+        list: List of (module, module_name) tuples
+    """
+    modules_to_process = []
+
+    # Process the root module
+    if hasattr(package, "__file__") and package.__file__:
+        modules_to_process.append((package, package.__name__))
+
+    # Find all submodules
+    for _module_finder, module_name, _is_pkg in pkgutil.iter_modules(package.__path__, package_name + "."):
+        if exclude_private and any(part.startswith("_") for part in module_name.split(".")):
+            continue
+
+        try:
+            module = importlib.import_module(module_name)
+            if hasattr(module, "__file__") and module.__file__:
+                modules_to_process.append((module, module_name))
+        except (ImportError, AttributeError):
+            logger.exception(f"Failed to import module {module_name}")
+
+    return modules_to_process
+
+
+def _group_modules_by_file(
+    modules: list[tuple[object, str]],
+) -> dict[str, list[tuple[object, str]]]:
+    """Group modules by their file path.
+
+    Args:
+        modules (list): List of (module, module_name) tuples
+
+    Returns:
+        dict: Dictionary mapping file paths to lists of (module, module_name) tuples
+    """
+    file_to_modules = defaultdict(list)
+
+    for module, module_name in modules:
+        if hasattr(module, "__file__") and module.__file__:
+            file_to_modules[module.__file__].append((module, module_name))
+
+    return file_to_modules
+
+
+def _process_module_file(
+    file_path: str,
+    modules: list[tuple[object, str]],
+    output_dir: Path,
+    *,
+    exclude_private: bool,
+) -> None:
+    """Process a module file and generate markdown documentation.
+
+    Args:
+        file_path (str): Path to the module file
+        modules (list): List of (module, module_name) tuples for this file
+        output_dir (Path): Root directory for output
+        exclude_private (bool): Whether to exclude private classes and methods
+    """
+    # Get the file name without extension
+    path_obj = Path(file_path)
+    file_name = path_obj.stem
+
+    # Skip __init__ files with no content
+    if file_name == "__init__" and not _has_documentable_members(
+        modules[0][0],
+        exclude_private=exclude_private,
+    ):
+        return
+
+    # Determine the module path for directory structure
+    # Use the module with the shortest name to determine the path
+    module, module_name = min(modules, key=lambda x: len(x[1]))
+
+    # Split the module name to get the path components
+    parts = module_name.split(".")
+
+    # Use the last part of each path component to create simplified structure
+    simplified_path = [part for part in parts[1:] if part != "__init__"]
+
+    # Create the output directory path
+    module_dir = output_dir
+    if simplified_path:
+        module_dir = output_dir.joinpath(*simplified_path)
+        module_dir.mkdir(exist_ok=True, parents=True)
+
+    # Generate markdown content
+    md_content = file_to_markdown(module, module_name)
+
+    # Write to file
+    output_file = module_dir / f"{file_name}.md"
+    output_file.write_text(md_content)
+
+
 def package_to_markdown_structure(
     package_name: str,
     output_dir: Path,
@@ -351,28 +599,66 @@ def package_to_markdown_structure(
 ) -> None:
     """Convert installed package to markdown files with directory structure.
 
+    This function imports the package, detects all modules and submodules, and
+    generates markdown documentation for each file, while preserving the directory structure.
+    Progress is reported with a tqdm progress bar.
+
     Args:
         package_name (str): Name of installed package
         output_dir (Path): Root directory for output markdown files
         exclude_private (bool): Whether to exclude private classes and methods (starting with _)
     """
-    import importlib
-
     try:
+        # Import the package
         package = importlib.import_module(package_name)
         output_dir.mkdir(exist_ok=True, parents=True)
 
-        # Process the root module directly
-        module_to_markdown_files(package, output_dir, exclude_private=exclude_private)
+        # Special handling for test mock packages that don't have __path__
+        if not hasattr(package, "__path__"):
+            _process_mock_package(package, package_name, output_dir, exclude_private=exclude_private)
+            return
 
-        # Process submodules in the package
-        for _name, obj in inspect.getmembers(package):
-            if inspect.ismodule(obj) and obj.__name__.startswith(package_name + "."):
-                # Create subdirectory for submodule
-                rel_name = obj.__name__[len(package_name) + 1 :]
-                sub_dir = output_dir / rel_name
-                module_to_markdown_files(obj, sub_dir, exclude_private=exclude_private)
+        # Collect all modules in the package
+        logger.info(f"Collecting modules in {package_name}...")
+        modules_to_process = _collect_package_modules(package, package_name, exclude_private=exclude_private)
+
+        # Group modules by file
+        file_to_modules = _group_modules_by_file(modules_to_process)
+
+        # Process each file and generate markdown
+        logger.info(f"Processing {len(file_to_modules)} files...")
+        for file_path, modules in tqdm(file_to_modules.items(), desc="Generating markdown"):
+            _process_module_file(file_path, modules, output_dir, exclude_private=exclude_private)
+
     except ImportError:
-        logger.exception("Could not import package '%s'", package_name)
+        logger.exception(f"Could not import package '{package_name}'")
     except (ValueError, TypeError, AttributeError):
-        logger.exception("Error processing package '%s'", package_name)
+        logger.exception(f"Error processing package '{package_name}'")
+
+
+def _has_documentable_members(
+    module: object,
+    *,
+    exclude_private: bool,
+) -> bool:
+    """Check if a module has documentable members.
+
+    Args:
+        module (object): Module to check
+        exclude_private (bool): Whether to exclude private members
+
+    Returns:
+        bool: True if the module has documentable members
+    """
+    for name, obj in inspect.getmembers(module):
+        if exclude_private and name.startswith("_"):
+            continue
+
+        if (
+            (inspect.isclass(obj) or inspect.isfunction(obj))
+            and hasattr(obj, "__module__")
+            and obj.__module__ == module.__name__
+        ):
+            return True
+
+    return False

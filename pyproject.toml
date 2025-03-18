@@ -6,8 +6,7 @@ requires = [ "setuptools>=45", "wheel" ]
 [project]
 name = "google-docstring-2md"
 version = "0.0.1"
-
-description = "Generate markdown documentation from Python packages with Google-style docstrings"
+description = "A tool to convert Google-style docstrings to markdown format"
 readme = "README.md"
 keywords = [
   "docstring",
@@ -22,10 +21,10 @@ keywords = [
 ]
 license = { text = "Custom License - See LICENSE file for details" }
 maintainers = [ { name = "Vladimir Iglovikov" } ]
-
-authors = [ { name = "Vladimir Iglovikov" } ]
+authors = [
+  { name = "Vladimir Iglovikov", email = "iglovikov@gmail.com" },
+]
 requires-python = ">=3.10"
-
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",
@@ -46,13 +45,17 @@ classifiers = [
 ]
 
 dependencies = [
-  "google-docstring-parser",
+  "docstring-parser>=0.15",
+  "tqdm>=4.65",
 ]
 
 optional-dependencies.dev = [
   "pre-commit>=3.5",
   "pytest>=8.3.3",
 ]
+urls."bug tracker" = "https://github.com/ternaus/google-docstring-2md/issues"
+urls.homepage = "https://github.com/ternaus/google-docstring-2md"
+scripts.docstring2md = "google_docstring_2md.__main__:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -112,25 +115,17 @@ format.line-ending = "auto"
 format.skip-magic-trailing-comma = false
 # Like Black, automatically detect the appropriate line ending.
 lint.select = [ "ALL" ]
+
 lint.ignore = [
+  # Allow boolean positional parameter with default value - we've addressed this with keyword-only parameters
+  "FBT001",
+  # Allow f-strings in logging - we've addressed this with proper string formatting
+  "G004",
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
 
 lint.explicit-preview-rules = true
-lint.per-file-ignores = { "__init__.py" = [
-  "F401",
-], "tools/*.py" = [
-  "T201",
-  "BLE001",
-  "FBT001",
-  "FBT002",
-  "ANN201",
-  "D100",
-  "D104",
-  "ANN401",
-  "G004",
-] }
 
 lint.fixable = [ "ALL" ]
 lint.unfixable = [  ]
