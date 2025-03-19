@@ -14,7 +14,7 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from google_docstring_2md.converter import file_to_markdown, module_to_markdown_files
+from google_docstring_2md.converter import GitHubConfig, file_to_markdown, module_to_markdown_files
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,7 @@ def _process_mock_package(
     output_dir: Path,
     *,
     exclude_private: bool,
+    github_config: GitHubConfig | None = None,
 ) -> None:
     """Process a mock package that doesn't have a __path__ attribute.
 
@@ -33,10 +34,20 @@ def _process_mock_package(
         package_name (str): Name of the package
         output_dir (Path): Root directory for output
         exclude_private (bool): Whether to exclude private classes and methods
+        github_config (GitHubConfig | None): Configuration for GitHub integration
     """
+    if github_config is None:
+        github_config = GitHubConfig()
+
     logger.info(f"Processing mock package {package_name}")
     # Process the root module directly
-    module_to_markdown_files(package, output_dir, exclude_private=exclude_private)
+    module_to_markdown_files(
+        package,
+        output_dir,
+        exclude_private=exclude_private,
+        github_repo=github_config.github_repo,
+        branch=github_config.branch,
+    )
 
     # Check if there are submodules as direct attributes
     for _name, obj in inspect.getmembers(package):
@@ -45,7 +56,13 @@ def _process_mock_package(
             rel_name = obj.__name__[len(package_name) + 1 :]
             sub_dir = output_dir / rel_name
             sub_dir.mkdir(exist_ok=True, parents=True)
-            module_to_markdown_files(obj, sub_dir, exclude_private=exclude_private)
+            module_to_markdown_files(
+                obj,
+                sub_dir,
+                exclude_private=exclude_private,
+                github_repo=github_config.github_repo,
+                branch=github_config.branch,
+            )
 
 
 def _collect_package_modules(
@@ -164,6 +181,7 @@ def _process_module_file(
     output_dir: Path,
     *,
     exclude_private: bool,
+    github_config: GitHubConfig | None = None,
 ) -> None:
     """Process a module file and generate markdown documentation.
 
@@ -172,7 +190,11 @@ def _process_module_file(
         modules (list): List of (module, module_name) tuples for this file
         output_dir (Path): Root directory for output
         exclude_private (bool): Whether to exclude private classes and methods
+        github_config (GitHubConfig | None): Configuration for GitHub integration
     """
+    if github_config is None:
+        github_config = GitHubConfig()
+
     try:
         # Get the file name without extension
         path_obj = Path(file_path)
@@ -226,7 +248,12 @@ def _process_module_file(
         # Generate markdown content
         try:
             # Wrap the markdown generation in a try-except block to handle issues
-            md_content = file_to_markdown(module, module_name)
+            md_content = file_to_markdown(
+                module,
+                module_name,
+                github_repo=github_config.github_repo,
+                branch=github_config.branch,
+            )
 
             # Write to file with .mdx extension
             output_file = module_dir / f"{file_name}.mdx"
@@ -338,6 +365,8 @@ def package_to_markdown_structure(
     output_dir: Path,
     *,
     exclude_private: bool = False,
+    github_repo: str | None = None,
+    branch: str = "main",
 ) -> None:
     """Convert installed package to markdown files with directory structure.
 
@@ -349,7 +378,11 @@ def package_to_markdown_structure(
         package_name (str): Name of installed package
         output_dir (Path): Root directory for output markdown files
         exclude_private (bool): Whether to exclude private classes and methods (starting with _)
+        github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
+        branch (str): The branch name to link to (default: "main")
     """
+    github_config = GitHubConfig(github_repo=github_repo, branch=branch)
+
     try:
         # Import the package
         package = importlib.import_module(package_name)
@@ -357,7 +390,13 @@ def package_to_markdown_structure(
 
         # Special handling for test mock packages that don't have __path__
         if not hasattr(package, "__path__"):
-            _process_mock_package(package, package_name, output_dir, exclude_private=exclude_private)
+            _process_mock_package(
+                package,
+                package_name,
+                output_dir,
+                exclude_private=exclude_private,
+                github_config=github_config,
+            )
             return
 
         # Collect all modules in the package
@@ -387,7 +426,13 @@ def package_to_markdown_structure(
         for file_path, modules in tqdm(file_to_modules.items(), desc="Generating markdown"):
             logger.debug(f"Processing file: {file_path}")
             try:
-                result = _process_module_file(file_path, modules, output_dir, exclude_private=exclude_private)
+                result = _process_module_file(
+                    file_path,
+                    modules,
+                    output_dir,
+                    exclude_private=exclude_private,
+                    github_config=github_config,
+                )
                 if result:
                     success_count += 1
                 else:

@@ -167,6 +167,17 @@ def parse_arguments() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--github-repo",
+        help="Base URL of the GitHub repository (e.g., 'https://github.com/username/repo')",
+    )
+
+    parser.add_argument(
+        "--branch",
+        default="main",
+        help="The branch name to link to (default: 'main')",
+    )
+
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -182,13 +193,21 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def generate_documentation(package_name: str, output_dir: Path, exclude_private: bool) -> int:
+def generate_documentation(
+    package_name: str,
+    output_dir: Path,
+    exclude_private: bool,
+    github_repo: str | None = None,
+    branch: str = "main",
+) -> int:
     """Generate Markdown documentation for the specified package.
 
     Args:
         package_name (str): Name of the package to document
         output_dir (Path): Directory to store the generated documentation
         exclude_private (bool): Whether to exclude private classes and methods
+        github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
+        branch (str): The branch name to link to (default: "main")
 
     Returns:
         int: Exit code (0 for success, 1 for error)
@@ -198,6 +217,8 @@ def generate_documentation(package_name: str, output_dir: Path, exclude_private:
             package_name,
             output_dir,
             exclude_private=exclude_private,
+            github_repo=github_repo,
+            branch=branch,
         )
     except (ImportError, ValueError, AttributeError):
         logger.exception("Error generating documentation")
@@ -224,7 +245,13 @@ def main() -> int:
 
     # Generate documentation
     output_dir = Path(args.output_dir)
-    return generate_documentation(args.package, output_dir, args.exclude_private)
+    return generate_documentation(
+        args.package,
+        output_dir,
+        args.exclude_private,
+        github_repo=args.github_repo,
+        branch=args.branch,
+    )
 
 
 if __name__ == "__main__":

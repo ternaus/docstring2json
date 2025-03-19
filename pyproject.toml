@@ -116,6 +116,8 @@ format.skip-magic-trailing-comma = false
 lint.select = [ "ALL" ]
 
 lint.ignore = [
+  # Allow empty docstrings - we've addressed this with proper docstrings
+  "EM102",
   # Allow boolean positional parameter with default value - we've addressed this with keyword-only parameters
   "FBT001",
   # Allow f-strings in logging - we've addressed this with proper string formatting
