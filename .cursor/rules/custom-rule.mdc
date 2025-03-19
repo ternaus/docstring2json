@@ -9,3 +9,4 @@ alwaysApply: true
 - we use python 3.10 typing => no Optional, Tuple, List
 - We use pytest with parametrize for testing
 - We use logging and not print statements
+- For working with typescript we use yarn, not npm

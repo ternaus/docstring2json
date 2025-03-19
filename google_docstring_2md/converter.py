@@ -731,11 +731,16 @@ def _generate_module_index_files(output_dir: Path) -> None:
         # Get all .mdx files, excluding any existing index.mdx
         mdx_files = [f for f in files if f.endswith(".mdx") and f != "index.mdx"]
 
-        # Create links for each file
-        links = [f"- [{file[:-4]}]({file[:-4]})" for file in sorted(mdx_files)]
+        # Get directory name for creating properly qualified links
+        # This is needed for Docusaurus to resolve links correctly
+        dir_name = root_path.name
 
-        # Create links for each subdirectory
-        links.extend([f"- [{dir_name}]({dir_name}/index)" for dir_name in sorted(dirs)])
+        # Create links for each file - with fully qualified path for Docusaurus
+        links = [f"- [{file[:-4]}]({dir_name}/{file[:-4]})" for file in sorted(mdx_files)]
+
+        # Create links for each subdirectory - with fully qualified path for Docusaurus
+        # Each subdirectory link should have the format: directory/subdirectory
+        links.extend([f"- [{subdir_name}]({dir_name}/{subdir_name})" for subdir_name in sorted(dirs)])
 
         # Only create an index file if there are links
         if links:
@@ -770,8 +775,8 @@ def _generate_root_index_file(output_dir: Path) -> None:
     # Create links
     links = []
 
-    # Add links to submodules first
-    links.extend([f"- [{subdir.name}]({subdir.name}/index)" for subdir in sorted(subdirs)])
+    # Add links to submodules first - at root level, links should be just the directory name
+    links.extend([f"- [{subdir.name}]({subdir.name})" for subdir in sorted(subdirs)])
 
     # Add links to root level files
     links.extend([f"- [{file.stem}]({file.stem})" for file in sorted(files)])
