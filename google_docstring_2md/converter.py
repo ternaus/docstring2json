@@ -340,22 +340,6 @@ def class_to_markdown(obj: type | Callable) -> str:
     return "".join(sections)
 
 
-def generate_markdown_files(package: object, output_dir: Path) -> None:
-    """Generate markdown files for all classes in a package.
-
-    Args:
-        package (object): Python package or module
-        output_dir (Path): Directory to write markdown files
-    """
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    for name, obj in inspect.getmembers(package):
-        if inspect.isclass(obj) and obj.__module__.startswith(package.__name__):
-            markdown = class_to_markdown(obj)
-            output_file = output_dir / f"{name}.md"
-            output_file.write_text(markdown)
-
-
 def module_to_markdown_files(
     module: object,
     output_dir: Path,

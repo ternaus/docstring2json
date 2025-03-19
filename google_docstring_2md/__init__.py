@@ -7,6 +7,8 @@ docstrings into Markdown documentation.
 from google_docstring_2md.converter import (
     class_to_markdown,
     file_to_markdown,
+)
+from google_docstring_2md.document_tree import (
     package_to_markdown_structure,
 )
 
