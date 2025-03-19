@@ -198,7 +198,6 @@ def _extract_param_docs(param: Parameter, param_docs: dict, obj: type | Callable
         desc = param_docs[param_name].get("description", "")
         if not isinstance(desc, str):
             desc = str(desc)
-        desc = desc.replace("\n", " ")
 
         # Get type from docstring if available
         doc_type = param_docs[param_name].get("type", "")
@@ -219,9 +218,8 @@ def _extract_param_docs(param: Parameter, param_docs: dict, obj: type | Callable
     if not isinstance(doc_type, str):
         doc_type = str(doc_type)
 
-    # Escape special characters for both type and description
+    # Escape special characters for type
     doc_type = _escape_mdx_special_chars(doc_type)
-    desc = _escape_mdx_special_chars(desc)
 
     return doc_type, desc
 
@@ -241,6 +239,7 @@ def _build_params_table(params: list[Parameter], parsed: dict, obj: type | Calla
     if not params or all(param.name in {"self", "cls"} for param in params):
         return []
 
+    # Use standard markdown table
     result = [
         "\n**Parameters**\n",
         "| Name | Type | Description |\n",
@@ -254,9 +253,32 @@ def _build_params_table(params: list[Parameter], parsed: dict, obj: type | Calla
 
     for param in params:
         doc_type, desc = _extract_param_docs(param, param_docs, obj)
-        # Escape the parameter name as well
+
+        # Escape the parameter name
         param_name = _escape_mdx_special_chars(param.name)
-        result.append(f"| {param_name} | {doc_type} | {desc} |\n")
+
+        # Handle description formatting
+        if desc:
+            # First escape special characters in the description
+            safe_desc = _escape_mdx_special_chars(desc)
+
+            # For multi-line content, we'll replace escaped newlines with actual HTML tags
+            # This way the HTML tags won't get escaped by _escape_mdx_special_chars
+            if "\n" in desc:
+                # Replace newlines with unescaped HTML line breaks
+                # We need to make sure we don't escape the HTML tags
+                html_breaks = safe_desc.replace("\n", "<br/>")
+                # Now make an unescaped pre tag wrapper
+                safe_desc = "<pre>" + html_breaks + "</pre>"
+
+                # Replace the escaped < and > in our HTML tags with actual < and >
+                safe_desc = safe_desc.replace("\\<br/\\>", "<br/>")
+                safe_desc = safe_desc.replace("\\<pre\\>", "<pre>")
+                safe_desc = safe_desc.replace("\\</pre\\>", "</pre>")
+        else:
+            safe_desc = ""
+
+        result.append(f"| {param_name} | {doc_type} | {safe_desc} |\n")
 
     return result
 
