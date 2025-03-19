@@ -19,6 +19,8 @@ from typing import Any
 from google_docstring_parser import parse_google_docstring
 from tqdm import tqdm
 
+from google_docstring_2md.config import MAX_SIGNATURE_LINE_LENGTH
+
 logger = logging.getLogger(__name__)
 
 
@@ -143,15 +145,45 @@ def _format_signature(obj: type | Callable, params: list[Parameter]) -> str:
     Returns:
         Formatted signature as string
     """
-    # Format signature
-    param_str = "" if not params else ", ".join(f"{p.name}={format_default_value(p.default)}" for p in params)
+    # If no parameters, return a simple signature
+    if not params:
+        signature = f"{obj.__name__}()"
+    else:
+        # Format each parameter
+        param_parts = [f"{p.name}={format_default_value(p.default)}" for p in params]
 
-    signature = f"{obj.__name__}({param_str})"
+        # Check if the signature would be too long
+        full_line = f"{obj.__name__}({', '.join(param_parts)})"
+
+        # If the signature is short enough, use a single line
+        if len(full_line) <= MAX_SIGNATURE_LINE_LENGTH:
+            signature = full_line
+        else:
+            # For long signatures, format with line breaks and indentation
+            # Indent parameters to align with the opening parenthesis
+            indent_size = len(obj.__name__) + 1  # Function name + opening parenthesis
+            indentation = " " * indent_size
+
+            # Start with the function name and opening parenthesis
+            signature_lines = [f"{obj.__name__}("]
+
+            # Add parameters with indentation
+            for i, param in enumerate(param_parts):
+                # Add comma if not the last parameter
+                suffix = "," if i < len(param_parts) - 1 else ""
+                signature_lines.append(f"{indentation}{param}{suffix}")
+
+            # Close the parenthesis
+            signature_lines.append(")")
+
+            # Join the lines with newlines
+            signature = "\n".join(signature_lines)
 
     # Handle return annotation for functions
     if inspect.isfunction(obj) and obj.__annotations__.get("return"):
         return_type = obj.__annotations__["return"]
-        signature += f" -> {return_type.__name__ if hasattr(return_type, '__name__') else str(return_type)}"
+        ret_type_str = return_type.__name__ if hasattr(return_type, "__name__") else str(return_type)
+        signature += f" -> {ret_type_str}"
 
     return signature
 
@@ -334,6 +366,8 @@ def class_to_markdown(obj: type | Callable) -> str:
 
     # Format and add the signature
     signature = _format_signature(obj, params)
+
+    # Add the object name and signature
     sections.extend(
         [
             f"# {obj_name}\n",
