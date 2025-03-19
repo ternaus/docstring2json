@@ -15,6 +15,9 @@ class HasModule(Protocol):
 
 T = TypeVar("T", bound=HasModule)
 
+# Cache for GitHub source code, keyed by (repo_url, branch, file_path)
+_SOURCE_CODE_CACHE: dict[tuple[str, str, str], list[str]] = {}
+
 
 def get_github_url(
     obj: object,
@@ -50,7 +53,7 @@ def get_github_url(
     github_url = f"{repo_url}/blob/{branch}/{github_file_path}"
 
     # Find line number through multiple methods
-    line_number = _find_line_number_from_github(obj, repo_url, branch, github_file_path)
+    line_number = _find_line_number_from_github_source(obj, repo_url, branch, github_file_path)
     if not line_number:
         line_number = _find_line_number_with_inspect(obj)
 
@@ -60,28 +63,28 @@ def get_github_url(
     return github_url
 
 
-def _find_line_number_from_github(
-    obj: object,
-    repo_url: str,
-    branch: str,
-    github_file_path: str,
-) -> int | None:
-    """Find line number by fetching source from GitHub.
+def _get_github_source_code(repo_url: str, branch: str, github_file_path: str) -> list[str] | None:
+    """Fetch source code from GitHub, with caching.
 
     Args:
-        obj (object): The object to find in the source
         repo_url (str): GitHub repository URL
         branch (str): Branch name
         github_file_path (str): Path to the file in the repo
 
     Returns:
-        int | None: Line number if found, None otherwise
+        list[str] | None: List of source code lines if successful, None otherwise
     """
     import urllib.error
     import urllib.parse
     import urllib.request
 
-    # Try to fetch source code from GitHub
+    cache_key = (repo_url, branch, github_file_path)
+
+    # Return from cache if available
+    if cache_key in _SOURCE_CODE_CACHE:
+        return _SOURCE_CODE_CACHE[cache_key]
+
+    # Fetch from GitHub if not in cache
     try:
         # Construct URL for raw content
         raw_url = f"{repo_url.replace('github.com', 'raw.githubusercontent.com')}/{branch}/{github_file_path}"
@@ -103,31 +106,59 @@ def _find_line_number_from_github(
             )
             with urllib.request.urlopen(req) as response:  # noqa: S310
                 source_code = response.read().decode("utf-8").splitlines()
+
+            # Cache the result
+            _SOURCE_CODE_CACHE[cache_key] = source_code
         except urllib.error.URLError as e:
             logger.warning(f"Failed to fetch source from URL: {e}")
             return None
-
-        # Determine the search pattern based on object type
-        obj_name = obj.__name__
-        if inspect.isclass(obj):
-            pattern = f"class {obj_name}"
-        elif inspect.isfunction(obj):
-            pattern = f"def {obj_name}"
         else:
-            # For other objects, we can't find a line number
-            return None
-
-        # Find the line with zero indentation that matches our pattern
-        for i, line in enumerate(source_code, 1):
-            stripped = line.lstrip()
-            # Check if it's a definition at zero indentation
-            if line == stripped and stripped.startswith(pattern) and (stripped[len(pattern)] in ["(", " ", ":", "\n"]):
-                return i
-        # No match found in for loop
-        return None  # noqa: TRY300
+            return source_code
 
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError):
         return None
+
+
+def _find_line_number_from_github_source(
+    obj: object,
+    repo_url: str,
+    branch: str,
+    github_file_path: str,
+) -> int | None:
+    """Find line number in GitHub source code.
+
+    Args:
+        obj (object): The object to find in the source
+        repo_url (str): GitHub repository URL
+        branch (str): Branch name
+        github_file_path (str): Path to the file in the repo
+
+    Returns:
+        int | None: Line number if found, None otherwise
+    """
+    # Get the source code (cached if already fetched)
+    source_code = _get_github_source_code(repo_url, branch, github_file_path)
+    if not source_code:
+        return None
+
+    # Determine the search pattern based on object type
+    obj_name = obj.__name__
+    if inspect.isclass(obj):
+        pattern = f"class {obj_name}"
+    elif inspect.isfunction(obj):
+        pattern = f"def {obj_name}"
+    else:
+        # For other objects, we can't find a line number
+        return None
+
+    # Find the line with zero indentation that matches our pattern
+    for i, line in enumerate(source_code, 1):
+        stripped = line.lstrip()
+        # Check if it's a definition at zero indentation
+        if line == stripped and stripped.startswith(pattern) and (stripped[len(pattern)] in ["(", " ", ":", "\n"]):
+            return i
+    # No match found in for loop
+    return None
 
 
 def _find_line_number_with_inspect(obj: object) -> int | None:
@@ -143,3 +174,13 @@ def _find_line_number_with_inspect(obj: object) -> int | None:
         return inspect.getsourcelines(obj)[1]
     except (TypeError, OSError):
         return None
+
+
+def clear_github_source_cache() -> None:
+    """Clear the GitHub source code cache.
+
+    This function can be useful for long-running processes or when you want to
+    refresh the cache to get the latest version of the source code.
+    """
+    _SOURCE_CODE_CACHE.clear()
+    logger.debug("GitHub source code cache cleared")
