@@ -35,17 +35,31 @@ class GitHubConfig:
 
     def __post_init__(self) -> None:
         """Initialize GitHub configuration, detecting if github_repo is a local path."""
-        # If github_repo looks like a path rather than a URL, try to extract info from it
-        if self.github_repo:
-            github_repo_str = str(self.github_repo)
-            if not github_repo_str.startswith(("http://", "https://")):
-                # github_repo is likely a local path, try to get info from local repo
-                repo_url, branch = get_github_info_from_local_repo(self.github_repo)
-                if repo_url:
-                    self.github_repo = repo_url
-                    # Only use detected branch if none was explicitly specified
-                    if branch and self.branch == "main":
-                        self.branch = branch
+        # If github_repo is None, nothing to do
+        if self.github_repo is None:
+            return
+
+        github_repo_str = str(self.github_repo)
+
+        # If it's already a URL, use it as is
+        if github_repo_str.startswith(("http://", "https://")):
+            return
+
+        # It's a local path, check if it's a git repository
+        # and get remote URL if possible
+        repo_url, branch = get_github_info_from_local_repo(self.github_repo)
+
+        # If we found a valid GitHub URL, use it instead
+        # This enables proper GitHub URLs in documentation
+        # while still accessing files locally
+        if repo_url:
+            # Store the original local path
+            self.local_repo_path = self.github_repo
+            # Use the GitHub URL for generating links
+            self.github_repo = repo_url
+            # Only use detected branch if none was explicitly specified
+            if branch and self.branch == "main":
+                self.branch = branch
 
 
 @dataclass
@@ -383,6 +397,7 @@ def class_to_markdown(obj: type | Callable, *, github_repo: str | None = None, b
     Args:
         obj (Union[type, Callable]): Class or function to document
         github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
+                                 or path to a local git repository
         branch (str): The branch name to link to (default: "main")
 
     Returns:
@@ -409,25 +424,24 @@ def class_to_markdown(obj: type | Callable, *, github_repo: str | None = None, b
     if github_repo:
         github_url = get_github_url(obj, github_repo, branch)
         if github_url:
-            # GitHub SVG icon (simplified)
-            github_icon = (
-                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" '
-                'fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 '
-                "0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53"
-                ".63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 "
-                "0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36"
-                ".09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75"
-                "-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42"
-                '-3.58-8-8-8z"/></svg>'
-            )
-
-            # Enhanced GitHub link with class that can be styled at the Docusaurus level
-            sections.append(
-                f'<div className="github-source-container">\n'
-                f'  <span className="github-icon">{github_icon}</span>\n'
-                f'  <a href="{github_url}" className="github-source-link">View source on GitHub</a>\n'
-                f"</div>\n\n",
-            )
+            # Determine if it's a local file path or a GitHub URL
+            if github_url.startswith(("http://", "https://")):
+                # GitHub SVG icon (simplified)
+                github_icon = (
+                    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" '
+                    'fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 '
+                    "0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53"
+                    ".64-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 "
+                    "0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 "
+                    "1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 "
+                    "3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 "
+                    '8c0-4.42-3.58-8-8-8z"></path></svg>'
+                )
+                # Add GitHub icon and link
+                sections.append(f'<a href="{github_url}" target="_blank">{github_icon} View on GitHub</a>\n\n')
+            else:
+                # It's a local file path, add a note about source location
+                sections.append(f"Source: `{github_url}`\n\n")
 
     # Parse docstring
     docstring = obj.__doc__ or ""
@@ -465,6 +479,7 @@ def module_to_markdown_files(
         output_dir (Path): Directory to write markdown files
         exclude_private (bool): Whether to exclude private classes and methods (starting with _)
         github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
+                                 or path to a local git repository
         branch (str): The branch name to link to (default: "main")
     """
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -591,6 +606,7 @@ def file_to_markdown(module: object, module_name: str, *, github_repo: str | Non
         module (object): The module object to document
         module_name (str): Name of the module for the heading
         github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
+                                 or path to a local git repository
         branch (str): The branch name to link to (default: "main")
 
     Returns:

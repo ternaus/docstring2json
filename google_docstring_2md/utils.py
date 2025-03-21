@@ -32,6 +32,7 @@ def get_github_url(
     Args:
         obj (object): The class or function object
         repo_url (str): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
+                        or path to a local git repository
         branch (str): The branch name to link to (default: "main")
 
     Returns:
@@ -50,15 +51,23 @@ def get_github_url(
     if not hasattr(obj, "__module__"):
         return None
 
-    # Get the module name and create GitHub URL
+    # Get the module name and create file path
     module_name = obj.__module__  # type: ignore[attr-defined]
     github_file_path = module_name.replace(".", "/") + ".py"
-    github_url = f"{repo_url}/blob/{branch}/{github_file_path}"
 
     # Find line number through multiple methods
     line_number = _find_line_number_from_github_source(obj, repo_url, branch, github_file_path)
     if not line_number:
         line_number = _find_line_number_with_inspect(obj)
+
+    # If it's a local path, don't try to generate a URL for it
+    if not repo_url.startswith(("http://", "https://")):
+        local_file_path = Path(repo_url) / github_file_path
+        file_path_str = str(local_file_path)
+        return f"{file_path_str}:{line_number}" if line_number else file_path_str
+
+    # It's a URL, format it accordingly
+    github_url = f"{repo_url}/blob/{branch}/{github_file_path}"
 
     # Return URL with line number if found, otherwise just URL
     if line_number:
@@ -77,17 +86,70 @@ def _get_github_source_code(repo_url: str, branch: str, github_file_path: str) -
     Returns:
         list[str] | None: List of source code lines if successful, None otherwise
     """
-    import urllib.error
-    import urllib.parse
-    import urllib.request
-
     cache_key = (repo_url, branch, github_file_path)
 
     # Return from cache if available
     if cache_key in _SOURCE_CODE_CACHE:
         return _SOURCE_CODE_CACHE[cache_key]
 
-    # Fetch from GitHub if not in cache
+    # Handle local file path case
+    if not repo_url.startswith(("http://", "https://")):
+        return _get_source_from_local_file(repo_url, github_file_path, cache_key)
+
+    # Handle GitHub URL case
+    return _get_source_from_github(repo_url, branch, github_file_path, cache_key)
+
+
+def _get_source_from_local_file(
+    repo_url: str,
+    github_file_path: str,
+    cache_key: tuple[str, str, str],
+) -> list[str] | None:
+    """Read source code from a local file.
+
+    Args:
+        repo_url (str): Local repository path
+        github_file_path (str): Path to the file within the repository
+        cache_key (tuple): Cache key for storing the result
+
+    Returns:
+        list[str] | None: List of source code lines if successful, None otherwise
+    """
+    try:
+        local_file_path = Path(repo_url) / github_file_path
+        if local_file_path.exists():
+            source_code = local_file_path.read_text(encoding="utf-8").splitlines()
+            _SOURCE_CODE_CACHE[cache_key] = source_code
+            return source_code
+
+        logger.warning(f"Local file not found: {local_file_path}")
+        return None
+    except OSError as e:
+        logger.warning(f"Error reading local file {local_file_path}: {e}")
+        return None
+
+
+def _get_source_from_github(
+    repo_url: str,
+    branch: str,
+    github_file_path: str,
+    cache_key: tuple[str, str, str],
+) -> list[str] | None:
+    """Fetch source code from GitHub.
+
+    Args:
+        repo_url (str): GitHub repository URL
+        branch (str): Branch name
+        github_file_path (str): Path to the file within the repository
+        cache_key (tuple): Cache key for storing the result
+
+    Returns:
+        list[str] | None: List of source code lines if successful, None otherwise
+    """
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
     try:
         # Construct URL for raw content
         raw_url = f"{repo_url.replace('github.com', 'raw.githubusercontent.com')}/{branch}/{github_file_path}"
@@ -112,11 +174,10 @@ def _get_github_source_code(repo_url: str, branch: str, github_file_path: str) -
 
             # Cache the result
             _SOURCE_CODE_CACHE[cache_key] = source_code
+            return source_code
         except urllib.error.URLError as e:
             logger.warning(f"Failed to fetch source from URL: {e}")
             return None
-        else:
-            return source_code
 
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError):
         return None
