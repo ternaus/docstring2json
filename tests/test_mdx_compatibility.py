@@ -43,7 +43,8 @@ def test_format_section_content(section, content, expected_output_contains):
     assert "PreserveFormat" not in result
 
 
-class TestClass:
+# Sample class used for testing, not a test class itself
+class DocTestClass:
     """Test class with special characters in docstring.
 
     This class has <angle brackets> and param=value in its description.
@@ -63,7 +64,7 @@ class TestClass:
 
 def test_class_to_markdown_with_special_chars():
     """Test that class_to_markdown properly handles special characters."""
-    result = class_to_markdown(TestClass)
+    result = class_to_markdown(DocTestClass)
 
     # Description should be escaped
     assert "\\<angle brackets\\>" in result
