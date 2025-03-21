@@ -1,6 +1,18 @@
-# google-docstring-2md
+# A tool to convert Google-style docstrings to markdown format
 
-Generate markdown documentation from Python packages with Google-style docstrings.
+> [!IMPORTANT]
+> This package requires a PAID LICENSE for all users EXCEPT the Albumentations Team.
+> Contact iglovikov@gmail.com to obtain a license before using this software.
+
+A Python package for parsing Google-style docstrings into structured dictionaries.
+
+## License Information
+
+This package is available under a custom license:
+- **Free for Albumentations Team projects** (https://github.com/albumentations-team)
+- **Paid license required for all other users** (individuals, companies, and other open-source projects)
+
+See the [LICENSE](LICENSE) file for complete details.
 
 ## Installation
 
