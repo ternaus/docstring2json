@@ -20,6 +20,7 @@ from google_docstring_parser import parse_google_docstring
 from tqdm import tqdm
 
 from google_docstring_2md.config import MAX_SIGNATURE_LINE_LENGTH
+from google_docstring_2md.reference_parser import format_references, parse_references
 from google_docstring_2md.utils import get_github_url
 
 logger = logging.getLogger(__name__)
@@ -139,6 +140,10 @@ def format_section_content(section: str, content: str) -> str:
             elif line_stripped:
                 lines.append(line_stripped)
         return "```python\n" + "\n".join(lines) + "\n```"
+
+    if section in ["References", "Reference"]:
+        references = parse_references(content)
+        return format_references(references, escape_func=_escape_mdx_special_chars)
 
     # Use code blocks instead of PreserveFormat
     return "```\n" + content + "\n```"
