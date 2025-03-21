@@ -565,7 +565,7 @@ def _process_documentation_items(
         # Adjust heading level
         lines = md.split("\n")
         if lines and lines[0].startswith("# "):
-            lines[0] = "## " + lines[0][2:]
+            lines[0] = f"## {lines[0][2:]}"
 
         content.append("\n".join(lines) + "\n\n")
 
@@ -587,15 +587,12 @@ def file_to_markdown(module: object, module_name: str, *, github_repo: str | Non
     # Collect module members
     classes, functions = _collect_module_members(module)
 
-    # Build document sections
-    content = [f"# {module_name}\n\n"]
-
-    # Add table of contents
-    content.append(_build_table_of_contents(classes, functions))
-
-    # Add anchor and module name
-    content.append(f'<a id="{module_name}"></a>\n\n')
-    content.append(f"# {module_name}\n\n")
+    content = [
+        f"# {module_name}\n\n",
+        _build_table_of_contents(classes, functions),
+        f'<a id="{module_name}"></a>\n\n',
+        f"# {module_name}\n\n",
+    ]
 
     # Add class documentation
     content.append(_process_documentation_items(classes, "Classes", github_repo=github_repo, branch=branch))
@@ -638,7 +635,7 @@ def _process_mock_package(
 
     # Check if there are submodules as direct attributes
     for _name, obj in inspect.getmembers(package):
-        if inspect.ismodule(obj) and obj.__name__.startswith(package_name + "."):
+        if inspect.ismodule(obj) and obj.__name__.startswith(f"{package_name}."):
             # Create subdirectory for submodule
             rel_name = obj.__name__[len(package_name) + 1 :]
             sub_dir = output_dir / rel_name
@@ -691,7 +688,7 @@ def _collect_package_modules(
 
         logger.debug(f"Scanning for submodules in {current_name}, path: {current_package.__path__}")
 
-        for _module_finder, module_name, is_pkg in pkgutil.iter_modules(current_package.__path__, current_name + "."):
+        for _module_finder, module_name, is_pkg in pkgutil.iter_modules(current_package.__path__, f"{current_name}."):
             logger.debug(f"Found submodule: {module_name}, is_package: {is_pkg}")
 
             if exclude_private and any(part.startswith("_") for part in module_name.split(".")):

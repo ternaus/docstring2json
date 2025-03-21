@@ -54,7 +54,7 @@ def _process_mock_package(
 
     # Check if there are submodules as direct attributes
     for _name, obj in inspect.getmembers(package):
-        if inspect.ismodule(obj) and obj.__name__.startswith(package_name + "."):
+        if inspect.ismodule(obj) and obj.__name__.startswith(f"{package_name}."):
             # Create subdirectory for submodule
             rel_name = obj.__name__[len(package_name) + 1 :]
             sub_dir = output_dir / rel_name
@@ -107,7 +107,7 @@ def _collect_package_modules(
 
         logger.debug(f"Scanning for submodules in {current_name}, path: {current_package.__path__}")
 
-        for _module_finder, module_name, is_pkg in pkgutil.iter_modules(current_package.__path__, current_name + "."):
+        for _module_finder, module_name, is_pkg in pkgutil.iter_modules(current_package.__path__, f"{current_name}."):
             logger.debug(f"Found submodule: {module_name}, is_package: {is_pkg}")
 
             if exclude_private and any(part.startswith("_") for part in module_name.split(".")):

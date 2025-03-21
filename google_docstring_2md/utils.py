@@ -63,9 +63,7 @@ def get_github_url(
     github_url = f"{repo_url}/blob/{branch}/{github_file_path}"
 
     # Return URL with line number if found, otherwise just URL
-    if line_number:
-        return f"{github_url}#L{line_number}"
-    return github_url
+    return f"{github_url}#L{line_number}" if line_number else github_url
 
 
 def _get_github_source_code(repo_url: str, branch: str, github_file_path: str) -> list[str] | None:

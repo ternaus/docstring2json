@@ -71,13 +71,13 @@ def _process_continuation_line(line: str, current_ref: dict[str, str]) -> dict[s
         source_part = stripped[colon_idx + 1 :].strip()
 
         # Append to description and set source
-        current_ref["description"] += " " + desc_part
+        current_ref["description"] = f"{current_ref['description']} {desc_part}"
         current_ref["source"] = source_part
     # Continuation of description or source
     elif current_ref["source"]:
-        current_ref["source"] += " " + stripped
+        current_ref["source"] = f"{current_ref['source']} {stripped}"
     else:
-        current_ref["description"] += " " + stripped
+        current_ref["description"] = f"{current_ref['description']} {stripped}"
 
     return current_ref
 
@@ -149,7 +149,7 @@ def format_url(text: str) -> str:
         url = match.group(0)
         # If URL starts with www, add https://
         if url.startswith("www."):
-            url = "https://" + url
+            url = f"https://{url}"
         # Return markdown link
         return f"[{url}]({url})"
 
