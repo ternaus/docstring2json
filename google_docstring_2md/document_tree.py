@@ -360,7 +360,7 @@ def _generate_root_index_file(output_dir: Path) -> None:
     logger.debug(f"Created root index file at {index_path}")
 
 
-def package_to_markdown_structure(
+def package_to_markdown_structure(  # noqa: C901
     package_name: str,
     output_dir: Path,
     *,
@@ -382,7 +382,14 @@ def package_to_markdown_structure(
                                   or path to a local git repository
         branch (str): The branch name to link to (default: "main")
     """
+    # If github_repo points to a local repository, it will be detected and handled by GitHubConfig
     github_config = GitHubConfig(github_repo=github_repo, branch=branch)
+
+    # If we're using a local repository, log it
+    if github_config.local_repo_path:
+        logger.info(f"Using local repository: {github_config.local_repo_path}")
+        if github_config.github_repo:
+            logger.info(f"Remote GitHub URL: {github_config.github_repo}")
 
     try:
         # Import the package

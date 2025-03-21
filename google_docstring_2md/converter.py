@@ -12,6 +12,7 @@ import pkgutil
 import re
 from collections import defaultdict
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,7 @@ class GitHubConfig:
 
     github_repo: str | None = None
     branch: str = "main"
+    local_repo_path: str | None = None
 
     def __post_init__(self) -> None:
         """Initialize GitHub configuration, detecting if github_repo is a local path."""
@@ -45,16 +47,14 @@ class GitHubConfig:
         if github_repo_str.startswith(("http://", "https://")):
             return
 
-        # It's a local path, check if it's a git repository
-        # and get remote URL if possible
+        # It's a local path, store it and check if it's a git repository
+        # to get remote URL if possible
+        self.local_repo_path = github_repo_str
         repo_url, branch = get_github_info_from_local_repo(self.github_repo)
 
-        # If we found a valid GitHub URL, use it instead
-        # This enables proper GitHub URLs in documentation
-        # while still accessing files locally
+        # If we found a valid GitHub URL, use it only for GitHub links in documentation
+        # but keep the local_repo_path for file access
         if repo_url:
-            # Store the original local path
-            self.local_repo_path = self.github_repo
             # Use the GitHub URL for generating links
             self.github_repo = repo_url
             # Only use detected branch if none was explicitly specified
@@ -388,7 +388,46 @@ def _process_other_sections(parsed: dict) -> list[str]:
     return result
 
 
-def class_to_markdown(obj: type | Callable, *, github_repo: str | None = None, branch: str = "main") -> str:
+def _try_get_source_information_from_local_path(
+    obj: object,
+    local_repo_path: str | None,
+) -> tuple[str | None, int | None]:
+    """Attempt to get source file path and line number from a local repository.
+
+    Args:
+        obj (object): The object to locate in source
+        local_repo_path (str | None): Path to the local repository
+
+    Returns:
+        tuple[str | None, int | None]: Tuple of (file_path, line_number) or (None, None) if not found
+    """
+    if not local_repo_path or not hasattr(obj, "__module__"):
+        return None, None
+
+    # Get the module name and create file path
+    module_name = obj.__module__
+    file_path = module_name.replace(".", "/") + ".py"
+    local_file_path = Path(local_repo_path) / file_path
+
+    # If local file exists, use it for display
+    if not local_file_path.exists():
+        return None, None
+
+    # Try to find line number
+    line_number = None
+    with suppress(TypeError, OSError):
+        line_number = inspect.getsourcelines(obj)[1]
+
+    return str(local_file_path), line_number
+
+
+def class_to_markdown(
+    obj: type | Callable,
+    *,
+    github_repo: str | None = None,
+    branch: str = "main",
+    local_repo_path: str | None = None,
+) -> str:
     """Convert class or function to markdown documentation.
 
     This function generates markdown documentation for a class or function,
@@ -399,6 +438,7 @@ def class_to_markdown(obj: type | Callable, *, github_repo: str | None = None, b
         github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
                                  or path to a local git repository
         branch (str): The branch name to link to (default: "main")
+        local_repo_path (str | None): Path to local repository for direct file access
 
     Returns:
         Markdown formatted documentation string
@@ -420,28 +460,8 @@ def class_to_markdown(obj: type | Callable, *, github_repo: str | None = None, b
         ],
     )
 
-    # Add GitHub link if github_repo is provided
-    if github_repo:
-        github_url = get_github_url(obj, github_repo, branch)
-        if github_url:
-            # Determine if it's a local file path or a GitHub URL
-            if github_url.startswith(("http://", "https://")):
-                # GitHub SVG icon (simplified)
-                github_icon = (
-                    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" '
-                    'fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 '
-                    "0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53"
-                    ".64-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 "
-                    "0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 "
-                    "1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 "
-                    "3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 "
-                    '8c0-4.42-3.58-8-8-8z"></path></svg>'
-                )
-                # Add GitHub icon and link
-                sections.append(f'<a href="{github_url}" target="_blank">{github_icon} View on GitHub</a>\n\n')
-            else:
-                # It's a local file path, add a note about source location
-                sections.append(f"Source: `{github_url}`\n\n")
+    # Add source link if available
+    _add_source_link(sections, obj, github_repo, branch, local_repo_path)
 
     # Parse docstring
     docstring = obj.__doc__ or ""
@@ -464,13 +484,64 @@ def class_to_markdown(obj: type | Callable, *, github_repo: str | None = None, b
     return "".join(sections)
 
 
+def _add_source_link(
+    sections: list[str],
+    obj: object,
+    github_repo: str | None,
+    branch: str,
+    local_repo_path: str | None,
+) -> None:
+    """Add a source link to the documentation.
+
+    Args:
+        sections (list[str]): List of documentation sections to append to
+        obj (object): The object being documented
+        github_repo (str | None): GitHub repository URL or None
+        branch (str): Branch name
+        local_repo_path (str | None): Path to local repository or None
+    """
+    if not github_repo:
+        return
+
+    # For GitHub links, prioritize using the local repo path if available
+    source_url = None
+
+    # Try to get source information from local path first
+    source_path, line_number = _try_get_source_information_from_local_path(obj, local_repo_path)
+
+    # If we found a local path, use it
+    if source_path:
+        if line_number:
+            source_path = f"{source_path}:{line_number}"
+        sections.append(f"Source: `{source_path}`\n\n")
+        return
+
+    # If no local path was found and we have a GitHub URL, use it
+    if github_repo.startswith(("http://", "https://")):
+        source_url = get_github_url(obj, github_repo, branch)
+
+        if source_url and source_url.startswith(("http://", "https://")):
+            # GitHub SVG icon (simplified)
+            github_icon = (
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" '
+                'fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 '
+                "0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53"
+                ".64-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 "
+                "0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 "
+                "1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 "
+                "3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 "
+                '8c0-4.42-3.58-8-8-8z"></path></svg>'
+            )
+            # Add GitHub icon and link
+            sections.append(f'<a href="{source_url}" target="_blank">{github_icon} View on GitHub</a>\n\n')
+
+
 def module_to_markdown_files(
     module: object,
     output_dir: Path,
     *,
     exclude_private: bool = False,
-    github_repo: str | None = None,
-    branch: str = "main",
+    github_config: GitHubConfig | None = None,
 ) -> None:
     """Generate markdown files for all classes and functions in a module.
 
@@ -478,10 +549,11 @@ def module_to_markdown_files(
         module (object): Python module
         output_dir (Path): Directory to write markdown files
         exclude_private (bool): Whether to exclude private classes and methods (starting with _)
-        github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
-                                 or path to a local git repository
-        branch (str): The branch name to link to (default: "main")
+        github_config (GitHubConfig | None): Configuration for GitHub integration
     """
+    if github_config is None:
+        github_config = GitHubConfig()
+
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Process classes and functions
@@ -498,7 +570,12 @@ def module_to_markdown_files(
 
         if is_in_module:
             try:
-                markdown = class_to_markdown(obj, github_repo=github_repo, branch=branch)
+                markdown = class_to_markdown(
+                    obj,
+                    github_repo=github_config.github_repo,
+                    branch=github_config.branch,
+                    local_repo_path=github_config.local_repo_path,
+                )
                 output_file = output_dir / f"{name}.md"
                 output_file.write_text(markdown)
             except (ValueError, TypeError, AttributeError):
@@ -564,6 +641,7 @@ def _process_documentation_items(
     *,
     github_repo: str | None = None,
     branch: str = "main",
+    local_repo_path: str | None = None,
 ) -> str:
     """Process a list of documentation items (classes or functions).
 
@@ -572,6 +650,7 @@ def _process_documentation_items(
         section_title (str): Section title (e.g., "Classes" or "Functions")
         github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
         branch (str): The branch name to link to (default: "main")
+        local_repo_path (str | None): Path to local repository for direct file access
 
     Returns:
         Markdown formatted documentation for the items
@@ -582,7 +661,12 @@ def _process_documentation_items(
     content = [f"**{section_title}**\n\n"]
 
     for name, obj in sorted(items):
-        md = class_to_markdown(obj, github_repo=github_repo, branch=branch)
+        md = class_to_markdown(
+            obj,
+            github_repo=github_repo,
+            branch=branch,
+            local_repo_path=local_repo_path,
+        )
 
         # Add anchor for the item
         module_name = obj.__module__
@@ -599,7 +683,14 @@ def _process_documentation_items(
     return "".join(content)
 
 
-def file_to_markdown(module: object, module_name: str, *, github_repo: str | None = None, branch: str = "main") -> str:
+def file_to_markdown(
+    module: object,
+    module_name: str,
+    *,
+    github_repo: str | None = None,
+    branch: str = "main",
+    local_repo_path: str | None = None,
+) -> str:
     """Convert a module to a single markdown document.
 
     Args:
@@ -608,6 +699,7 @@ def file_to_markdown(module: object, module_name: str, *, github_repo: str | Non
         github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
                                  or path to a local git repository
         branch (str): The branch name to link to (default: "main")
+        local_repo_path (str | None): Path to local repository for direct file access
 
     Returns:
         str: The markdown content
@@ -626,10 +718,26 @@ def file_to_markdown(module: object, module_name: str, *, github_repo: str | Non
     content.append(f"# {module_name}\n\n")
 
     # Add class documentation
-    content.append(_process_documentation_items(classes, "Classes", github_repo=github_repo, branch=branch))
+    content.append(
+        _process_documentation_items(
+            classes,
+            "Classes",
+            github_repo=github_repo,
+            branch=branch,
+            local_repo_path=local_repo_path,
+        ),
+    )
 
     # Add function documentation
-    content.append(_process_documentation_items(functions, "Functions", github_repo=github_repo, branch=branch))
+    content.append(
+        _process_documentation_items(
+            functions,
+            "Functions",
+            github_repo=github_repo,
+            branch=branch,
+            local_repo_path=local_repo_path,
+        ),
+    )
 
     return "".join(content)
 
@@ -660,8 +768,7 @@ def _process_mock_package(
         package,
         output_dir,
         exclude_private=exclude_private,
-        github_repo=github_config.github_repo,
-        branch=github_config.branch,
+        github_config=github_config,
     )
 
     # Check if there are submodules as direct attributes
@@ -675,8 +782,7 @@ def _process_mock_package(
                 obj,
                 sub_dir,
                 exclude_private=exclude_private,
-                github_repo=github_config.github_repo,
-                branch=github_config.branch,
+                github_config=github_config,
             )
 
 
@@ -840,6 +946,7 @@ def _process_module_file(
                 module_name,
                 github_repo=github_config.github_repo,
                 branch=github_config.branch,
+                local_repo_path=github_config.local_repo_path,
             )
 
             # Write to file with .mdx extension

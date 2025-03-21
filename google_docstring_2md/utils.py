@@ -176,7 +176,10 @@ def _get_source_from_github(
             _SOURCE_CODE_CACHE[cache_key] = source_code
             return source_code
         except urllib.error.URLError as e:
-            logger.warning(f"Failed to fetch source from URL: {e}")
+            # If it's an HTTP error, it might be because this GitHub URL was derived from a local repository
+            # In this case, we'll silently fail (debug-level log only) since we're likely using the local files directly
+            log_level = logging.DEBUG if "404" in str(e) else logging.WARNING
+            logger.log(log_level, f"Failed to fetch source from URL: {e}")
             return None
 
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError):
@@ -193,7 +196,7 @@ def _find_line_number_from_github_source(
 
     Args:
         obj (object): The object to find in the source
-        repo_url (str): GitHub repository URL
+        repo_url (str): GitHub repository URL or path to local repository
         branch (str): Branch name
         github_file_path (str): Path to the file in the repo
 
