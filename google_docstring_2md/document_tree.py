@@ -379,6 +379,7 @@ def package_to_markdown_structure(
         output_dir (Path): Root directory for output markdown files
         exclude_private (bool): Whether to exclude private classes and methods (starting with _)
         github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
+                                  or path to a local git repository
         branch (str): The branch name to link to (default: "main")
     """
     github_config = GitHubConfig(github_repo=github_repo, branch=branch)

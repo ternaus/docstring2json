@@ -2,6 +2,9 @@
 
 import inspect
 import logging
+import re
+import subprocess
+from pathlib import Path
 from typing import Protocol, TypeVar
 
 logger = logging.getLogger(__name__)
@@ -184,3 +187,93 @@ def clear_github_source_cache() -> None:
     """
     _SOURCE_CODE_CACHE.clear()
     logger.debug("GitHub source code cache cleared")
+
+
+def get_git_remote_url(repo_path: str | Path = ".") -> str | None:
+    """Get the GitHub repository URL from a local git repository.
+
+    Args:
+        repo_path (str | Path): Path to the local git repository
+
+    Returns:
+        str | None: URL of the GitHub repository, or None if not found
+    """
+    try:
+        # Using a constant command array with no user input, so it's safe
+        result = subprocess.run(  # noqa: S603
+            ["git", "config", "--get", "remote.origin.url"],  # noqa: S607
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        if result.returncode != 0 or not result.stdout.strip():
+            logger.warning(f"Failed to get git remote URL in {repo_path}: {result.stderr}")
+            return None
+
+        # Clean up the URL - convert SSH URLs to HTTPS
+        remote_url = result.stdout.strip()
+
+        # Handle SSH format: git@github.com:username/repo.git
+        ssh_match = re.match(r"git@github\.com:([^/]+)/([^.]+)\.git", remote_url)
+        if ssh_match:
+            username, repo = ssh_match.groups()
+            return f"https://github.com/{username}/{repo}"
+
+        # Handle HTTPS format: https://github.com/username/repo.git
+        https_match = re.match(r"https://github\.com/([^/]+)/([^.]+)(?:\.git)?", remote_url)
+        if https_match:
+            username, repo = https_match.groups()
+            return f"https://github.com/{username}/{repo}"
+
+        # If we get here, no match was found
+        logger.warning(f"Unrecognized GitHub URL format: {remote_url}")
+        return None
+    except (subprocess.SubprocessError, FileNotFoundError):
+        logger.warning(f"Failed to execute git command in {repo_path}")
+        return None
+
+
+def get_git_branch(repo_path: str | Path = ".") -> str | None:
+    """Get the current git branch from a local git repository.
+
+    Args:
+        repo_path (str | Path): Path to the local git repository
+
+    Returns:
+        str | None: Name of the current branch, or None if not found
+    """
+    try:
+        # Using a constant command array with no user input, so it's safe
+        result = subprocess.run(  # noqa: S603
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],  # noqa: S607
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        if result.returncode != 0 or not result.stdout.strip():
+            logger.warning(f"Failed to get git branch in {repo_path}: {result.stderr}")
+            return None
+
+        return result.stdout.strip()
+    except (subprocess.SubprocessError, FileNotFoundError):
+        logger.warning(f"Failed to execute git command in {repo_path}")
+        return None
+
+
+def get_github_info_from_local_repo(repo_path: str | Path = ".") -> tuple[str | None, str | None]:
+    """Get GitHub repository URL and branch from a local git repository.
+
+    Args:
+        repo_path (str | Path): Path to the local git repository
+
+    Returns:
+        tuple[str | None, str | None]: A tuple of (repository_url, branch_name)
+    """
+    repo_url = get_git_remote_url(repo_path)
+    branch = get_git_branch(repo_path)
+
+    return repo_url, branch

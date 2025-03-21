@@ -13,6 +13,13 @@ from google_docstring_2md.document_tree import (
 )
 from google_docstring_2md.utils import (
     clear_github_source_cache,
+    get_github_info_from_local_repo,
 )
 
-__all__ = ["class_to_markdown", "clear_github_source_cache", "file_to_markdown", "package_to_markdown_structure"]
+__all__ = [
+    "class_to_markdown",
+    "clear_github_source_cache",
+    "file_to_markdown",
+    "get_github_info_from_local_repo",
+    "package_to_markdown_structure",
+]

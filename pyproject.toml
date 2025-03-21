@@ -122,6 +122,8 @@ lint.ignore = [
   "FBT001",
   # Allow f-strings in logging - we've addressed this with proper string formatting
   "G004",
+  # Allow return statements in try blocks - the current structure is clearer
+  "TRY300",
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.

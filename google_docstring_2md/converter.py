@@ -21,7 +21,7 @@ from tqdm import tqdm
 
 from google_docstring_2md.config import MAX_SIGNATURE_LINE_LENGTH
 from google_docstring_2md.reference_parser import format_references, parse_references
-from google_docstring_2md.utils import get_github_url
+from google_docstring_2md.utils import get_github_info_from_local_repo, get_github_url
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,20 @@ class GitHubConfig:
 
     github_repo: str | None = None
     branch: str = "main"
+
+    def __post_init__(self) -> None:
+        """Initialize GitHub configuration, detecting if github_repo is a local path."""
+        # If github_repo looks like a path rather than a URL, try to extract info from it
+        if self.github_repo:
+            github_repo_str = str(self.github_repo)
+            if not github_repo_str.startswith(("http://", "https://")):
+                # github_repo is likely a local path, try to get info from local repo
+                repo_url, branch = get_github_info_from_local_repo(self.github_repo)
+                if repo_url:
+                    self.github_repo = repo_url
+                    # Only use detected branch if none was explicitly specified
+                    if branch and self.branch == "main":
+                        self.branch = branch
 
 
 @dataclass

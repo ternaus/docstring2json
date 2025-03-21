@@ -168,7 +168,8 @@ def parse_arguments() -> argparse.Namespace:
 
     parser.add_argument(
         "--github-repo",
-        help="Base URL of the GitHub repository (e.g., 'https://github.com/username/repo')",
+        help="Base URL of the GitHub repository (e.g., 'https://github.com/username/repo') "
+        "or path to a local git repository",
     )
 
     parser.add_argument(
@@ -206,7 +207,7 @@ def generate_documentation(
         package_name (str): Name of the package to document
         output_dir (Path): Directory to store the generated documentation
         exclude_private (bool): Whether to exclude private classes and methods
-        github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
+        github_repo (str | None): Base URL of the GitHub repository or path to a local git repository
         branch (str): The branch name to link to (default: "main")
 
     Returns:
@@ -249,8 +250,8 @@ def main() -> int:
         args.package,
         output_dir,
         args.exclude_private,
-        github_repo=args.github_repo,
-        branch=args.branch,
+        args.github_repo,
+        args.branch,
     )
 
 
