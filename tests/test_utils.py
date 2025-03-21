@@ -1,7 +1,6 @@
 """Tests for the utils module."""
 
 import inspect
-from typing import Any, Optional
 import pytest
 
 from google_docstring_2md.utils import get_github_url
