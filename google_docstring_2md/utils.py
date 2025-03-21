@@ -55,9 +55,12 @@ def get_github_url(
     github_file_path = module_name.replace(".", "/") + ".py"
 
     # Find line number through multiple methods
-    line_number = _find_line_number_from_github_source(obj, repo_url, branch, github_file_path)
-    if not line_number:
-        line_number = _find_line_number_with_inspect(obj)
+    line_number = _find_line_number_from_github_source(
+        obj,
+        repo_url,
+        branch,
+        github_file_path,
+    ) or _find_line_number_with_inspect(obj)
 
     # Format GitHub URL
     github_url = f"{repo_url}/blob/{branch}/{github_file_path}"

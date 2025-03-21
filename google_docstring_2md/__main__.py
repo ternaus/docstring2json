@@ -75,7 +75,7 @@ def _log_first_level_modules(package: object) -> int:
     count = 0
 
     if hasattr(package, "__path__"):
-        for _finder, name, ispkg in pkgutil.iter_modules(package.__path__, package.__name__ + "."):
+        for _finder, name, ispkg in pkgutil.iter_modules(package.__path__, f"{package.__name__}."):
             count += 1
             logger.debug(f"  - {name} (is_package: {ispkg})")
 
@@ -96,14 +96,14 @@ def _log_second_level_modules(package: object) -> int:
     second_level_count = 0
 
     if hasattr(package, "__path__"):
-        for _finder, name, ispkg in pkgutil.iter_modules(package.__path__, package.__name__ + "."):
+        for _finder, name, ispkg in pkgutil.iter_modules(package.__path__, f"{package.__name__}."):
             if ispkg:
                 try:
                     subpackage = importlib.import_module(name)
                     if hasattr(subpackage, "__path__"):
                         for _subfinder, subname, subispkg in pkgutil.iter_modules(
                             subpackage.__path__,
-                            name + ".",
+                            f"{name}.",
                         ):
                             second_level_count += 1
                             logger.debug(f"  - {subname} (is_package: {subispkg})")
