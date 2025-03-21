@@ -143,6 +143,20 @@ def _collect_module_members(module: object) -> tuple[list[tuple[str, object]], l
     return classes, functions
 
 
+def _normalize_anchor_id(module_name: str, name: str) -> str:
+    """Normalize anchor ID for consistent markdown navigation.
+
+    Args:
+        module_name (str): Module name
+        name (str): Object name
+
+    Returns:
+        str: Normalized anchor ID with dots replaced by hyphens
+    """
+    anchor_id = f"{module_name}.{name}"
+    return anchor_id.replace(".", "-")
+
+
 def _build_table_of_contents(classes: list[tuple[str, object]], functions: list[tuple[str, object]]) -> str:
     """Build a table of contents for the markdown document.
 
@@ -158,13 +172,13 @@ def _build_table_of_contents(classes: list[tuple[str, object]], functions: list[
     # Add classes to ToC
     for name, obj in sorted(classes):
         module_name = obj.__module__
-        anchor_id = f"{module_name}.{name}"
+        anchor_id = _normalize_anchor_id(module_name, name)
         toc.append(f"* [{name}](#{anchor_id})\n")
 
     # Add functions to ToC
     for name, obj in sorted(functions):
         module_name = obj.__module__
-        anchor_id = f"{module_name}.{name}"
+        anchor_id = _normalize_anchor_id(module_name, name)
         toc.append(f"* [{name}](#{anchor_id})\n")
 
     toc.append("\n")
@@ -199,7 +213,7 @@ def _process_documentation_items(
 
         # Add anchor for the item
         module_name = obj.__module__
-        anchor_id = f"{module_name}.{name}"
+        anchor_id = _normalize_anchor_id(module_name, name)
         content.append(f'<a id="{anchor_id}"></a>\n\n')
 
         # Adjust heading level
@@ -227,10 +241,13 @@ def file_to_markdown(module: object, module_name: str, *, github_repo: str | Non
     # Collect module members
     classes, functions = _collect_module_members(module)
 
+    # Normalize the module_name for the anchor
+    module_anchor = module_name.replace(".", "-")
+
     content = [
         f"# {module_name}\n\n",
         _build_table_of_contents(classes, functions),
-        f'<a id="{module_name}"></a>\n\n',
+        f'<a id="{module_anchor}"></a>\n\n',
         f"# {module_name}\n\n",
     ]
 
