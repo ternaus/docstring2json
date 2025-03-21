@@ -2,9 +2,6 @@
 
 import inspect
 import logging
-import re
-import subprocess
-from pathlib import Path
 from typing import Protocol, TypeVar
 
 logger = logging.getLogger(__name__)
@@ -35,11 +32,10 @@ def get_github_url(
     Args:
         obj (object): The class or function object
         repo_url (str): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
-                        or path to a local git repository
         branch (str): The branch name to link to (default: "main")
 
     Returns:
-        Union[str, None]: URL to the class or function in GitHub, or None if URL cannot be generated
+        str | None: URL to the class or function in GitHub, or None if URL cannot be generated
 
     Example:
         >>> import albumentations as A
@@ -63,13 +59,7 @@ def get_github_url(
     if not line_number:
         line_number = _find_line_number_with_inspect(obj)
 
-    # If it's a local path, don't try to generate a URL for it
-    if not repo_url.startswith(("http://", "https://")):
-        local_file_path = Path(repo_url) / github_file_path
-        file_path_str = str(local_file_path)
-        return f"{file_path_str}:{line_number}" if line_number else file_path_str
-
-    # It's a URL, format it accordingly
+    # Format GitHub URL
     github_url = f"{repo_url}/blob/{branch}/{github_file_path}"
 
     # Return URL with line number if found, otherwise just URL
@@ -95,41 +85,8 @@ def _get_github_source_code(repo_url: str, branch: str, github_file_path: str) -
     if cache_key in _SOURCE_CODE_CACHE:
         return _SOURCE_CODE_CACHE[cache_key]
 
-    # Handle local file path case
-    if not repo_url.startswith(("http://", "https://")):
-        return _get_source_from_local_file(repo_url, github_file_path, cache_key)
-
     # Handle GitHub URL case
     return _get_source_from_github(repo_url, branch, github_file_path, cache_key)
-
-
-def _get_source_from_local_file(
-    repo_url: str,
-    github_file_path: str,
-    cache_key: tuple[str, str, str],
-) -> list[str] | None:
-    """Read source code from a local file.
-
-    Args:
-        repo_url (str): Local repository path
-        github_file_path (str): Path to the file within the repository
-        cache_key (tuple): Cache key for storing the result
-
-    Returns:
-        list[str] | None: List of source code lines if successful, None otherwise
-    """
-    try:
-        local_file_path = Path(repo_url) / github_file_path
-        if local_file_path.exists():
-            source_code = local_file_path.read_text(encoding="utf-8").splitlines()
-            _SOURCE_CODE_CACHE[cache_key] = source_code
-            return source_code
-
-        logger.warning(f"Local file not found: {local_file_path}")
-        return None
-    except OSError as e:
-        logger.warning(f"Error reading local file {local_file_path}: {e}")
-        return None
 
 
 def _get_source_from_github(
@@ -254,98 +211,6 @@ def _find_line_number_with_inspect(obj: object) -> int | None:
 def clear_github_source_cache() -> None:
     """Clear the GitHub source code cache.
 
-    This function can be useful for long-running processes or when you want to
-    refresh the cache to get the latest version of the source code.
+    This can be useful if you're working with multiple repositories or branches.
     """
     _SOURCE_CODE_CACHE.clear()
-    logger.debug("GitHub source code cache cleared")
-
-
-def get_git_remote_url(repo_path: str | Path = ".") -> str | None:
-    """Get the GitHub repository URL from a local git repository.
-
-    Args:
-        repo_path (str | Path): Path to the local git repository
-
-    Returns:
-        str | None: URL of the GitHub repository, or None if not found
-    """
-    try:
-        # Using a constant command array with no user input, so it's safe
-        result = subprocess.run(  # noqa: S603
-            ["git", "config", "--get", "remote.origin.url"],  # noqa: S607
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-        if result.returncode != 0 or not result.stdout.strip():
-            logger.warning(f"Failed to get git remote URL in {repo_path}: {result.stderr}")
-            return None
-
-        # Clean up the URL - convert SSH URLs to HTTPS
-        remote_url = result.stdout.strip()
-
-        # Handle SSH format: git@github.com:username/repo.git
-        ssh_match = re.match(r"git@github\.com:([^/]+)/([^.]+)\.git", remote_url)
-        if ssh_match:
-            username, repo = ssh_match.groups()
-            return f"https://github.com/{username}/{repo}"
-
-        # Handle HTTPS format: https://github.com/username/repo.git
-        https_match = re.match(r"https://github\.com/([^/]+)/([^.]+)(?:\.git)?", remote_url)
-        if https_match:
-            username, repo = https_match.groups()
-            return f"https://github.com/{username}/{repo}"
-
-        # If we get here, no match was found
-        logger.warning(f"Unrecognized GitHub URL format: {remote_url}")
-        return None
-    except (subprocess.SubprocessError, FileNotFoundError):
-        logger.warning(f"Failed to execute git command in {repo_path}")
-        return None
-
-
-def get_git_branch(repo_path: str | Path = ".") -> str | None:
-    """Get the current git branch from a local git repository.
-
-    Args:
-        repo_path (str | Path): Path to the local git repository
-
-    Returns:
-        str | None: Name of the current branch, or None if not found
-    """
-    try:
-        # Using a constant command array with no user input, so it's safe
-        result = subprocess.run(  # noqa: S603
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],  # noqa: S607
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-        if result.returncode != 0 or not result.stdout.strip():
-            logger.warning(f"Failed to get git branch in {repo_path}: {result.stderr}")
-            return None
-
-        return result.stdout.strip()
-    except (subprocess.SubprocessError, FileNotFoundError):
-        logger.warning(f"Failed to execute git command in {repo_path}")
-        return None
-
-
-def get_github_info_from_local_repo(repo_path: str | Path = ".") -> tuple[str | None, str | None]:
-    """Get GitHub repository URL and branch from a local git repository.
-
-    Args:
-        repo_path (str | Path): Path to the local git repository
-
-    Returns:
-        tuple[str | None, str | None]: A tuple of (repository_url, branch_name)
-    """
-    repo_url = get_git_remote_url(repo_path)
-    branch = get_git_branch(repo_path)
-
-    return repo_url, branch

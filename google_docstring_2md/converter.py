@@ -7,22 +7,19 @@ docstrings into Markdown documentation.
 import importlib
 import inspect
 import logging
-import os
 import pkgutil
 import re
 from collections import defaultdict
 from collections.abc import Callable
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from google_docstring_parser import parse_google_docstring
-from tqdm import tqdm
 
 from google_docstring_2md.config import MAX_SIGNATURE_LINE_LENGTH
 from google_docstring_2md.reference_parser import format_references, parse_references
-from google_docstring_2md.utils import get_github_info_from_local_repo, get_github_url
+from google_docstring_2md.utils import get_github_url
 
 logger = logging.getLogger(__name__)
 
@@ -33,33 +30,10 @@ class GitHubConfig:
 
     github_repo: str | None = None
     branch: str = "main"
-    local_repo_path: str | None = None
 
     def __post_init__(self) -> None:
-        """Initialize GitHub configuration, detecting if github_repo is a local path."""
-        # If github_repo is None, nothing to do
-        if self.github_repo is None:
-            return
-
-        github_repo_str = str(self.github_repo)
-
-        # If it's already a URL, use it as is
-        if github_repo_str.startswith(("http://", "https://")):
-            return
-
-        # It's a local path, store it and check if it's a git repository
-        # to get remote URL if possible
-        self.local_repo_path = github_repo_str
-        repo_url, branch = get_github_info_from_local_repo(self.github_repo)
-
-        # If we found a valid GitHub URL, use it only for GitHub links in documentation
-        # but keep the local_repo_path for file access
-        if repo_url:
-            # Use the GitHub URL for generating links
-            self.github_repo = repo_url
-            # Only use detected branch if none was explicitly specified
-            if branch and self.branch == "main":
-                self.branch = branch
+        """Initialize GitHub configuration."""
+        # No special handling needed - only accept GitHub URLs
 
 
 @dataclass
@@ -388,46 +362,7 @@ def _process_other_sections(parsed: dict) -> list[str]:
     return result
 
 
-def _try_get_source_information_from_local_path(
-    obj: object,
-    local_repo_path: str | None,
-) -> tuple[str | None, int | None]:
-    """Attempt to get source file path and line number from a local repository.
-
-    Args:
-        obj (object): The object to locate in source
-        local_repo_path (str | None): Path to the local repository
-
-    Returns:
-        tuple[str | None, int | None]: Tuple of (file_path, line_number) or (None, None) if not found
-    """
-    if not local_repo_path or not hasattr(obj, "__module__"):
-        return None, None
-
-    # Get the module name and create file path
-    module_name = obj.__module__
-    file_path = module_name.replace(".", "/") + ".py"
-    local_file_path = Path(local_repo_path) / file_path
-
-    # If local file exists, use it for display
-    if not local_file_path.exists():
-        return None, None
-
-    # Try to find line number
-    line_number = None
-    with suppress(TypeError, OSError):
-        line_number = inspect.getsourcelines(obj)[1]
-
-    return str(local_file_path), line_number
-
-
-def class_to_markdown(
-    obj: type | Callable,
-    *,
-    github_repo: str | None = None,
-    branch: str = "main",
-    local_repo_path: str | None = None,
-) -> str:
+def class_to_markdown(obj: type | Callable, *, github_repo: str | None = None, branch: str = "main") -> str:
     """Convert class or function to markdown documentation.
 
     This function generates markdown documentation for a class or function,
@@ -436,9 +371,7 @@ def class_to_markdown(
     Args:
         obj (Union[type, Callable]): Class or function to document
         github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
-                                 or path to a local git repository
         branch (str): The branch name to link to (default: "main")
-        local_repo_path (str | None): Path to local repository for direct file access
 
     Returns:
         Markdown formatted documentation string
@@ -460,8 +393,29 @@ def class_to_markdown(
         ],
     )
 
-    # Add source link if available
-    _add_source_link(sections, obj, github_repo, branch, local_repo_path)
+    # Add GitHub link if github_repo is provided
+    if github_repo:
+        github_url = get_github_url(obj, github_repo, branch)
+        if github_url:
+            # GitHub SVG icon (simplified)
+            github_icon = (
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" '
+                'fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 '
+                "0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53"
+                ".63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 "
+                "0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36"
+                ".09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75"
+                "-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42"
+                '-3.58-8-8-8z"/></svg>'
+            )
+
+            # Enhanced GitHub link with class that can be styled at the Docusaurus level
+            sections.append(
+                f'<div className="github-source-container">\n'
+                f'  <span className="github-icon">{github_icon}</span>\n'
+                f'  <a href="{github_url}" className="github-source-link">View source on GitHub</a>\n'
+                f"</div>\n\n",
+            )
 
     # Parse docstring
     docstring = obj.__doc__ or ""
@@ -484,64 +438,13 @@ def class_to_markdown(
     return "".join(sections)
 
 
-def _add_source_link(
-    sections: list[str],
-    obj: object,
-    github_repo: str | None,
-    branch: str,
-    local_repo_path: str | None,
-) -> None:
-    """Add a source link to the documentation.
-
-    Args:
-        sections (list[str]): List of documentation sections to append to
-        obj (object): The object being documented
-        github_repo (str | None): GitHub repository URL or None
-        branch (str): Branch name
-        local_repo_path (str | None): Path to local repository or None
-    """
-    if not github_repo:
-        return
-
-    # For GitHub links, prioritize using the local repo path if available
-    source_url = None
-
-    # Try to get source information from local path first
-    source_path, line_number = _try_get_source_information_from_local_path(obj, local_repo_path)
-
-    # If we found a local path, use it
-    if source_path:
-        if line_number:
-            source_path = f"{source_path}:{line_number}"
-        sections.append(f"Source: `{source_path}`\n\n")
-        return
-
-    # If no local path was found and we have a GitHub URL, use it
-    if github_repo.startswith(("http://", "https://")):
-        source_url = get_github_url(obj, github_repo, branch)
-
-        if source_url and source_url.startswith(("http://", "https://")):
-            # GitHub SVG icon (simplified)
-            github_icon = (
-                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" '
-                'fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 '
-                "0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53"
-                ".64-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 "
-                "0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 "
-                "1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 "
-                "3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 "
-                '8c0-4.42-3.58-8-8-8z"></path></svg>'
-            )
-            # Add GitHub icon and link
-            sections.append(f'<a href="{source_url}" target="_blank">{github_icon} View on GitHub</a>\n\n')
-
-
 def module_to_markdown_files(
     module: object,
     output_dir: Path,
     *,
     exclude_private: bool = False,
-    github_config: GitHubConfig | None = None,
+    github_repo: str | None = None,
+    branch: str = "main",
 ) -> None:
     """Generate markdown files for all classes and functions in a module.
 
@@ -549,11 +452,9 @@ def module_to_markdown_files(
         module (object): Python module
         output_dir (Path): Directory to write markdown files
         exclude_private (bool): Whether to exclude private classes and methods (starting with _)
-        github_config (GitHubConfig | None): Configuration for GitHub integration
+        github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
+        branch (str): The branch name to link to (default: "main")
     """
-    if github_config is None:
-        github_config = GitHubConfig()
-
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Process classes and functions
@@ -570,13 +471,8 @@ def module_to_markdown_files(
 
         if is_in_module:
             try:
-                markdown = class_to_markdown(
-                    obj,
-                    github_repo=github_config.github_repo,
-                    branch=github_config.branch,
-                    local_repo_path=github_config.local_repo_path,
-                )
-                output_file = output_dir / f"{name}.md"
+                markdown = class_to_markdown(obj, github_repo=github_repo, branch=branch)
+                output_file = output_dir / f"{name}.mdx"
                 output_file.write_text(markdown)
             except (ValueError, TypeError, AttributeError):
                 logger.exception("Error processing %s", name)
@@ -641,7 +537,6 @@ def _process_documentation_items(
     *,
     github_repo: str | None = None,
     branch: str = "main",
-    local_repo_path: str | None = None,
 ) -> str:
     """Process a list of documentation items (classes or functions).
 
@@ -650,7 +545,6 @@ def _process_documentation_items(
         section_title (str): Section title (e.g., "Classes" or "Functions")
         github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
         branch (str): The branch name to link to (default: "main")
-        local_repo_path (str | None): Path to local repository for direct file access
 
     Returns:
         Markdown formatted documentation for the items
@@ -661,12 +555,7 @@ def _process_documentation_items(
     content = [f"**{section_title}**\n\n"]
 
     for name, obj in sorted(items):
-        md = class_to_markdown(
-            obj,
-            github_repo=github_repo,
-            branch=branch,
-            local_repo_path=local_repo_path,
-        )
+        md = class_to_markdown(obj, github_repo=github_repo, branch=branch)
 
         # Add anchor for the item
         module_name = obj.__module__
@@ -683,23 +572,14 @@ def _process_documentation_items(
     return "".join(content)
 
 
-def file_to_markdown(
-    module: object,
-    module_name: str,
-    *,
-    github_repo: str | None = None,
-    branch: str = "main",
-    local_repo_path: str | None = None,
-) -> str:
+def file_to_markdown(module: object, module_name: str, *, github_repo: str | None = None, branch: str = "main") -> str:
     """Convert a module to a single markdown document.
 
     Args:
         module (object): The module object to document
         module_name (str): Name of the module for the heading
         github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
-                                 or path to a local git repository
         branch (str): The branch name to link to (default: "main")
-        local_repo_path (str | None): Path to local repository for direct file access
 
     Returns:
         str: The markdown content
@@ -718,26 +598,10 @@ def file_to_markdown(
     content.append(f"# {module_name}\n\n")
 
     # Add class documentation
-    content.append(
-        _process_documentation_items(
-            classes,
-            "Classes",
-            github_repo=github_repo,
-            branch=branch,
-            local_repo_path=local_repo_path,
-        ),
-    )
+    content.append(_process_documentation_items(classes, "Classes", github_repo=github_repo, branch=branch))
 
     # Add function documentation
-    content.append(
-        _process_documentation_items(
-            functions,
-            "Functions",
-            github_repo=github_repo,
-            branch=branch,
-            local_repo_path=local_repo_path,
-        ),
-    )
+    content.append(_process_documentation_items(functions, "Functions", github_repo=github_repo, branch=branch))
 
     return "".join(content)
 
@@ -768,7 +632,8 @@ def _process_mock_package(
         package,
         output_dir,
         exclude_private=exclude_private,
-        github_config=github_config,
+        github_repo=github_config.github_repo,
+        branch=github_config.branch,
     )
 
     # Check if there are submodules as direct attributes
@@ -782,7 +647,8 @@ def _process_mock_package(
                 obj,
                 sub_dir,
                 exclude_private=exclude_private,
-                github_config=github_config,
+                github_repo=github_config.github_repo,
+                branch=github_config.branch,
             )
 
 
@@ -875,7 +741,7 @@ def _process_module_file(
     *,
     exclude_private: bool,
     github_config: GitHubConfig | None = None,
-) -> None:
+) -> bool:
     """Process a module file and generate markdown documentation.
 
     Args:
@@ -884,6 +750,9 @@ def _process_module_file(
         output_dir (Path): Root directory for output
         exclude_private (bool): Whether to exclude private classes and methods
         github_config (GitHubConfig | None): Configuration for GitHub integration
+
+    Returns:
+        bool: True if the process was successful, False otherwise
     """
     if github_config is None:
         github_config = GitHubConfig()
@@ -901,7 +770,7 @@ def _process_module_file(
             exclude_private=exclude_private,
         ):
             logger.debug(f"Skipping empty __init__ file: {file_path}")
-            return None
+            return False
 
         # Determine the module path for directory structure
         # Use the module with the shortest name to determine the path
@@ -946,7 +815,6 @@ def _process_module_file(
                 module_name,
                 github_repo=github_config.github_repo,
                 branch=github_config.branch,
-                local_repo_path=github_config.local_repo_path,
             )
 
             # Write to file with .mdx extension
@@ -961,192 +829,6 @@ def _process_module_file(
     except (ValueError, TypeError, AttributeError, ImportError, OSError):
         logger.exception(f"Error processing file {file_path}")
         return False
-
-
-def _generate_module_index_files(output_dir: Path) -> None:
-    """Generate index files for modules and submodules.
-
-    This function walks through the output directory structure and creates index.mdx files
-    for each directory, listing all the available documentation files.
-
-    Args:
-        output_dir (Path): Root directory of the generated documentation
-    """
-    logger.info("Generating module index files...")
-
-    # Process each directory in the output
-    for root, dirs, files in os.walk(output_dir):
-        root_path = Path(root)
-        rel_path = root_path.relative_to(output_dir)
-
-        # Skip the root directory, we'll handle it separately
-        if root_path == output_dir:
-            continue
-
-        # Get module name from relative path
-        module_name = str(rel_path).replace(os.path.sep, ".")
-
-        # Get all .mdx files, excluding any existing index.mdx
-        mdx_files = [f for f in files if f.endswith(".mdx") and f != "index.mdx"]
-
-        # Get directory name for creating properly qualified links
-        # This is needed for Docusaurus to resolve links correctly
-        dir_name = root_path.name
-
-        # Create links for each file - with fully qualified path for Docusaurus
-        links = [f"- [{file[:-4]}]({dir_name}/{file[:-4]})" for file in sorted(mdx_files)]
-
-        # Create links for each subdirectory - with fully qualified path for Docusaurus
-        # Each subdirectory link should have the format: directory/subdirectory
-        links.extend([f"- [{subdir_name}]({dir_name}/{subdir_name})" for subdir_name in sorted(dirs)])
-
-        # Only create an index file if there are links
-        if links:
-            # Create content for the index file
-            content = [
-                f"# {module_name}",
-                "",
-                "## Contents",
-                "",
-            ]
-            content.extend(links)
-
-            # Write the index file
-            index_path = root_path / "index.mdx"
-            index_path.write_text("\n".join(content))
-            logger.debug(f"Created index file at {index_path}")
-
-    # Create root index file
-    _generate_root_index_file(output_dir)
-
-
-def _generate_root_index_file(output_dir: Path) -> None:
-    """Generate the root index file.
-
-    Args:
-        output_dir (Path): Root directory of the generated documentation
-    """
-    # Get direct subdirectories and files
-    subdirs = [d for d in output_dir.iterdir() if d.is_dir()]
-    files = [f for f in output_dir.iterdir() if f.is_file() and f.name.endswith(".mdx") and f.name != "index.mdx"]
-
-    # Create links
-    links = []
-
-    # Add links to submodules first - at root level, links should be just the directory name
-    links.extend([f"- [{subdir.name}]({subdir.name})" for subdir in sorted(subdirs)])
-
-    # Add links to root level files
-    links.extend([f"- [{file.stem}]({file.stem})" for file in sorted(files)])
-
-    # Create content
-    content = [
-        "# API Documentation",
-        "",
-        "## Modules",
-        "",
-    ]
-    content.extend(links)
-
-    # Write the index file
-    index_path = output_dir / "index.mdx"
-    index_path.write_text("\n".join(content))
-    logger.debug(f"Created root index file at {index_path}")
-
-
-def package_to_markdown_structure(
-    package_name: str,
-    output_dir: Path,
-    *,
-    exclude_private: bool = False,
-    github_repo: str | None = None,
-    branch: str = "main",
-) -> None:
-    """Convert installed package to markdown files with directory structure.
-
-    This function imports the package, detects all modules and submodules, and
-    generates markdown documentation for each file, while preserving the directory structure.
-    Progress is reported with a tqdm progress bar.
-
-    Args:
-        package_name (str): Name of installed package
-        output_dir (Path): Root directory for output markdown files
-        exclude_private (bool): Whether to exclude private classes and methods (starting with _)
-        github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
-        branch (str): The branch name to link to (default: "main")
-    """
-    github_config = GitHubConfig(github_repo=github_repo, branch=branch)
-
-    try:
-        # Import the package
-        package = importlib.import_module(package_name)
-        output_dir.mkdir(exist_ok=True, parents=True)
-
-        # Special handling for test mock packages that don't have __path__
-        if not hasattr(package, "__path__"):
-            _process_mock_package(
-                package,
-                package_name,
-                output_dir,
-                exclude_private=exclude_private,
-                github_config=github_config,
-            )
-            return
-
-        # Collect all modules in the package
-        logger.info(f"Collecting modules in {package_name}...")
-        modules_to_process = _collect_package_modules(package, package_name, exclude_private=exclude_private)
-
-        # Debug output for modules collected
-        logger.debug(f"Total modules collected: {len(modules_to_process)}")
-        for module, module_name in modules_to_process:
-            logger.debug(f"Module: {module_name} from {getattr(module, '__file__', 'Unknown file')}")
-
-        # Group modules by file
-        file_to_modules = _group_modules_by_file(modules_to_process)
-
-        # Debug output for file grouping
-        logger.debug(f"Total files to process: {len(file_to_modules)}")
-        for file_path, modules in file_to_modules.items():
-            logger.debug(f"File: {file_path} with {len(modules)} modules")
-            for _module, module_name in modules:
-                logger.debug(f"  - Module: {module_name}")
-
-        # Process each file and generate markdown
-        logger.info(f"Processing {len(file_to_modules)} files...")
-        success_count = 0
-        error_count = 0
-
-        for file_path, modules in tqdm(file_to_modules.items(), desc="Generating markdown"):
-            logger.debug(f"Processing file: {file_path}")
-            try:
-                result = _process_module_file(
-                    file_path,
-                    modules,
-                    output_dir,
-                    exclude_private=exclude_private,
-                    github_config=github_config,
-                )
-                if result:
-                    success_count += 1
-                else:
-                    error_count += 1
-            except (ValueError, TypeError, AttributeError, ImportError, OSError):
-                logger.exception(f"Error processing file {file_path}")
-                error_count += 1
-
-        # Generate index files for all modules and submodules
-        _generate_module_index_files(output_dir)
-
-        logger.info(
-            f"Documentation generation complete. Processed {len(file_to_modules)} files: "
-            f"{success_count} successful, {error_count} with errors.",
-        )
-
-    except ImportError:
-        logger.exception(f"Could not import package '{package_name}'")
-    except (ValueError, TypeError, AttributeError):
-        logger.exception(f"Error processing package '{package_name}'")
 
 
 def _has_documentable_members(
@@ -1175,3 +857,86 @@ def _has_documentable_members(
             return True
 
     return False
+
+
+def package_to_markdown_structure(
+    package_name: str,
+    output_dir: Path,
+    *,
+    exclude_private: bool = False,
+    github_repo: str | None = None,
+    branch: str = "main",
+) -> None:
+    """Convert installed package to markdown files with directory structure.
+
+    This function imports the package, detects all modules and submodules, and
+    generates markdown documentation for each file, while preserving the directory structure.
+    Progress is reported with a tqdm progress bar.
+
+    Args:
+        package_name (str): Name of installed package
+        output_dir (Path): Root directory for output markdown files
+        exclude_private (bool): Whether to exclude private classes and methods (starting with _)
+        github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
+        branch (str): The branch name to link to (default: "main")
+    """
+    # Create GitHub config
+    github_config = GitHubConfig(github_repo=github_repo, branch=branch)
+
+    try:
+        # Import the package
+        package = importlib.import_module(package_name)
+        output_dir.mkdir(exist_ok=True, parents=True)
+
+        # Special handling for test mock packages that don't have __path__
+        if not hasattr(package, "__path__"):
+            _process_mock_package(
+                package,
+                package_name,
+                output_dir,
+                exclude_private=exclude_private,
+                github_config=github_config,
+            )
+            return
+
+        # Collect all modules in the package
+        logger.info(f"Collecting modules in {package_name}...")
+        modules_to_process = _collect_package_modules(package, package_name, exclude_private=exclude_private)
+
+        # Group modules by file
+        file_to_modules = _group_modules_by_file(modules_to_process)
+
+        # Process each file and generate markdown
+        logger.info(f"Processing {len(file_to_modules)} files...")
+        success_count = 0
+        error_count = 0
+
+        def _safe_process_module_file(file_path: str, modules: list[tuple[object, str]]) -> bool:
+            try:
+                return _process_module_file(
+                    file_path,
+                    modules,
+                    output_dir,
+                    exclude_private=exclude_private,
+                    github_config=github_config,
+                )
+            except (ValueError, TypeError, AttributeError, ImportError, OSError):
+                logger.exception(f"Error processing file {file_path}")
+                return False
+
+        for file_path, modules in file_to_modules.items():
+            result = _safe_process_module_file(file_path, modules)
+            if result:
+                success_count += 1
+            else:
+                error_count += 1
+
+        logger.info(
+            f"Documentation generation complete. Processed {len(file_to_modules)} files: "
+            f"{success_count} successful, {error_count} with errors.",
+        )
+
+    except ImportError:
+        logger.exception(f"Could not import package '{package_name}'")
+    except (ValueError, TypeError, AttributeError):
+        logger.exception(f"Error processing package '{package_name}'")

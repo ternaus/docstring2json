@@ -7,14 +7,17 @@ of Markdown/MDX documentation files, preserving the original package structure.
 import importlib
 import inspect
 import logging
-import os
 import pkgutil
 from collections import defaultdict
 from pathlib import Path
 
 from tqdm import tqdm
 
-from google_docstring_2md.converter import GitHubConfig, file_to_markdown, module_to_markdown_files
+from google_docstring_2md.converter import (
+    GitHubConfig,
+    file_to_markdown,
+    module_to_markdown_files,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -269,98 +272,7 @@ def _process_module_file(
         return False
 
 
-def _generate_module_index_files(output_dir: Path) -> None:
-    """Generate index files for modules and submodules.
-
-    This function walks through the output directory structure and creates index.mdx files
-    for each directory, listing all the available documentation files.
-
-    Args:
-        output_dir (Path): Root directory of the generated documentation
-    """
-    logger.info("Generating module index files...")
-
-    # Process each directory in the output
-    for root, dirs, files in os.walk(output_dir):
-        root_path = Path(root)
-        rel_path = root_path.relative_to(output_dir)
-
-        # Skip the root directory, we'll handle it separately
-        if root_path == output_dir:
-            continue
-
-        # Get module name from relative path
-        module_name = str(rel_path).replace(os.path.sep, ".")
-
-        # Get all .mdx files, excluding any existing index.mdx
-        mdx_files = [f for f in files if f.endswith(".mdx") and f != "index.mdx"]
-
-        # Get directory name for creating properly qualified links
-        # This is needed for Docusaurus to resolve links correctly
-        dir_name = root_path.name
-
-        # Create links for each file - with fully qualified path for Docusaurus
-        links = [f"- [{file[:-4]}]({dir_name}/{file[:-4]})" for file in sorted(mdx_files)]
-
-        # Create links for each subdirectory - with fully qualified path for Docusaurus
-        # Each subdirectory link should have the format: directory/subdirectory
-        links.extend([f"- [{subdir_name}]({dir_name}/{subdir_name})" for subdir_name in sorted(dirs)])
-
-        # Only create an index file if there are links
-        if links:
-            # Create content for the index file
-            content = [
-                f"# {module_name}",
-                "",
-                "## Contents",
-                "",
-            ]
-            content.extend(links)
-
-            # Write the index file
-            index_path = root_path / "index.mdx"
-            index_path.write_text("\n".join(content))
-            logger.debug(f"Created index file at {index_path}")
-
-    # Create root index file
-    _generate_root_index_file(output_dir)
-
-
-def _generate_root_index_file(output_dir: Path) -> None:
-    """Generate the root index file.
-
-    Args:
-        output_dir (Path): Root directory of the generated documentation
-    """
-    # Get direct subdirectories and files
-    subdirs = [d for d in output_dir.iterdir() if d.is_dir()]
-    files = [f for f in output_dir.iterdir() if f.is_file() and f.name.endswith(".mdx") and f.name != "index.mdx"]
-
-    # Create links
-    links = []
-
-    # Add links to submodules first - at root level, links should be just the directory name
-    links.extend([f"- [{subdir.name}]({subdir.name})" for subdir in sorted(subdirs)])
-
-    # Add links to root level files
-    links.extend([f"- [{file.stem}]({file.stem})" for file in sorted(files)])
-
-    # Create content
-    content = [
-        "# API Documentation",
-        "",
-        "## Modules",
-        "",
-    ]
-    content.extend(links)
-
-    # Write the index file
-    index_path = output_dir / "index.mdx"
-    index_path.write_text("\n".join(content))
-    logger.debug(f"Created root index file at {index_path}")
-
-
-def package_to_markdown_structure(  # noqa: C901
+def package_to_markdown_structure(
     package_name: str,
     output_dir: Path,
     *,
@@ -379,17 +291,10 @@ def package_to_markdown_structure(  # noqa: C901
         output_dir (Path): Root directory for output markdown files
         exclude_private (bool): Whether to exclude private classes and methods (starting with _)
         github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
-                                  or path to a local git repository
         branch (str): The branch name to link to (default: "main")
     """
-    # If github_repo points to a local repository, it will be detected and handled by GitHubConfig
+    # Create GitHub config
     github_config = GitHubConfig(github_repo=github_repo, branch=branch)
-
-    # If we're using a local repository, log it
-    if github_config.local_repo_path:
-        logger.info(f"Using local repository: {github_config.local_repo_path}")
-        if github_config.github_repo:
-            logger.info(f"Remote GitHub URL: {github_config.github_repo}")
 
     try:
         # Import the package
@@ -448,9 +353,6 @@ def package_to_markdown_structure(  # noqa: C901
             except (ValueError, TypeError, AttributeError, ImportError, OSError):
                 logger.exception(f"Error processing file {file_path}")
                 error_count += 1
-
-        # Generate index files for all modules and submodules
-        _generate_module_index_files(output_dir)
 
         logger.info(
             f"Documentation generation complete. Processed {len(file_to_modules)} files: "
