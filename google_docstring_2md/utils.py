@@ -9,6 +9,9 @@ from typing import Protocol, TypeVar
 
 logger = logging.getLogger(__name__)
 
+# HTTP status codes
+HTTP_NOT_FOUND = 404
+
 
 class HasModule(Protocol):
     """Protocol for objects that have a __module__ attribute."""
@@ -175,11 +178,16 @@ def _get_source_from_github(
             # Cache the result
             _SOURCE_CODE_CACHE[cache_key] = source_code
             return source_code
+        except urllib.error.HTTPError as e:
+            # If it's a 404 error, it might be because this GitHub URL was derived from a local repository
+            # In this case, we'll log at debug level since we might be using local files directly
+            if e.code == HTTP_NOT_FOUND:
+                logger.debug(f"HTTP 404 Not Found for URL: {raw_url}")
+            else:
+                logger.warning(f"Failed to fetch source from URL: {e}")
+            return None
         except urllib.error.URLError as e:
-            # If it's an HTTP error, it might be because this GitHub URL was derived from a local repository
-            # In this case, we'll silently fail (debug-level log only) since we're likely using the local files directly
-            log_level = logging.DEBUG if "404" in str(e) else logging.WARNING
-            logger.log(log_level, f"Failed to fetch source from URL: {e}")
+            logger.warning(f"Failed to fetch source from URL: {e}")
             return None
 
     except (urllib.error.URLError, urllib.error.HTTPError, ValueError):
