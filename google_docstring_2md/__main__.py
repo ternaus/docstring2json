@@ -134,7 +134,7 @@ def debug_package_structure(package_name: str) -> None:
         # Log second level modules
         _log_second_level_modules(package)
 
-    except (ImportError, AttributeError, ModuleNotFoundError):
+    except (ImportError, AttributeError):
         logger.exception("Error inspecting package")
 
 

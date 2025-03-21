@@ -61,16 +61,15 @@ def get_signature_params(obj: type | Callable) -> list[Parameter]:
 
         for name, param in signature.parameters.items():
             # Get parameter type annotation
-            if param.annotation is not inspect.Signature.empty:
-                if hasattr(param.annotation, "__name__"):
-                    param_type = param.annotation.__name__
-                else:
-                    param_type = str(param.annotation).replace("typing.", "")
-                    # Clean up typing annotations (remove typing. prefix)
-                    if "'" in param_type:
-                        param_type = param_type.split("'")[1]
-            else:
+            if param.annotation is inspect.Signature.empty:
                 param_type = ""
+            elif hasattr(param.annotation, "__name__"):
+                param_type = param.annotation.__name__
+            else:
+                param_type = str(param.annotation).replace("typing.", "")
+                # Clean up typing annotations (remove typing. prefix)
+                if "'" in param_type:
+                    param_type = param_type.split("'")[1]
 
             # Get default value
             default = param.default if param.default is not inspect.Signature.empty else None
@@ -95,9 +94,7 @@ def format_default_value(value: object) -> str:
     """
     if value is None:
         return "None"
-    if isinstance(value, str):
-        return f"'{value}'"
-    return str(value)
+    return f"'{value}'" if isinstance(value, str) else str(value)
 
 
 def _escape_mdx_special_chars(text: str) -> str:
@@ -117,7 +114,7 @@ def _escape_mdx_special_chars(text: str) -> str:
 
     # Replace multiple backslashes (e.g. \\n) with a code format
     # This is to avoid issues with LaTeX-like code that uses backslashes
-    escaped = re.sub(r"\\{2,}", lambda m: "`" + m.group(0) + "`", escaped)
+    escaped = re.sub(r"\\{2,}", lambda m: f"`{m.group(0)}`", escaped)
 
     # Escape curly braces, which are special in MDX/JSX
     return escaped.replace("{", "\\{").replace("}", "\\}")
@@ -133,7 +130,10 @@ def format_section_content(section: str, content: str) -> str:
     Returns:
         Formatted content with proper markdown
     """
-    if section in ["Example", "Examples"] and (">>>" in content or "..." in content):
+    examples_sections = {"Example", "Examples"}
+    references_sections = {"References", "Reference"}
+
+    if section in examples_sections and (">>>" in content or "..." in content):
         lines = []
         for line_content in content.split("\n"):
             line_stripped = line_content.strip()
@@ -143,12 +143,42 @@ def format_section_content(section: str, content: str) -> str:
                 lines.append(line_stripped)
         return "```python\n" + "\n".join(lines) + "\n```"
 
-    if section in ["References", "Reference"]:
+    if section in references_sections:
         references = parse_references(content)
         return format_references(references, escape_func=_escape_mdx_special_chars)
 
     # Use code blocks instead of PreserveFormat
     return "```\n" + content + "\n```"
+
+
+def _format_long_signature(obj_name: str, param_parts: list[str]) -> str:
+    """Format a long function signature with line breaks and indentation.
+
+    Args:
+        obj_name (str): Name of the object (function/class)
+        param_parts (list[str]): List of formatted parameter strings
+
+    Returns:
+        str: Formatted signature with line breaks
+    """
+    # Indent parameters to align with the opening parenthesis
+    indent_size = len(obj_name) + 1  # Function name + opening parenthesis
+    indentation = " " * indent_size
+
+    # Start with the function name and opening parenthesis
+    signature_lines = [f"{obj_name}("]
+
+    # Add parameters with indentation
+    for i, param in enumerate(param_parts):
+        # Add comma if not the last parameter
+        suffix = "," if i < len(param_parts) - 1 else ""
+        signature_lines.append(f"{indentation}{param}{suffix}")
+
+    # Close the parenthesis
+    signature_lines.append(")")
+
+    # Join the lines with newlines
+    return "\n".join(signature_lines)
 
 
 def _format_signature(obj: type | Callable, params: list[Parameter]) -> str:
@@ -176,24 +206,7 @@ def _format_signature(obj: type | Callable, params: list[Parameter]) -> str:
             signature = full_line
         else:
             # For long signatures, format with line breaks and indentation
-            # Indent parameters to align with the opening parenthesis
-            indent_size = len(obj.__name__) + 1  # Function name + opening parenthesis
-            indentation = " " * indent_size
-
-            # Start with the function name and opening parenthesis
-            signature_lines = [f"{obj.__name__}("]
-
-            # Add parameters with indentation
-            for i, param in enumerate(param_parts):
-                # Add comma if not the last parameter
-                suffix = "," if i < len(param_parts) - 1 else ""
-                signature_lines.append(f"{indentation}{param}{suffix}")
-
-            # Close the parenthesis
-            signature_lines.append(")")
-
-            # Join the lines with newlines
-            signature = "\n".join(signature_lines)
+            signature = _format_long_signature(obj.__name__, param_parts)
 
     # Handle return annotation for functions
     if inspect.isfunction(obj) and obj.__annotations__.get("return"):
@@ -317,7 +330,7 @@ def _build_params_table(params: list[Parameter], parsed: dict, obj: type | Calla
                 # We need to make sure we don't escape the HTML tags
                 html_breaks = safe_desc.replace("\n", "<br/>")
                 # Now make an unescaped pre tag wrapper
-                safe_desc = "<pre>" + html_breaks + "</pre>"
+                safe_desc = f"<pre>{html_breaks}</pre>"
 
                 # Replace the escaped < and > in our HTML tags with actual < and >
                 safe_desc = safe_desc.replace("\\<br/\\>", "<br/>")
@@ -344,12 +357,11 @@ def _process_other_sections(parsed: dict) -> list[str]:
 
     for section, section_content in parsed.items():
         if section not in ["Description", "Args"]:
-            if not isinstance(section_content, str):
-                if isinstance(section_content, list) and not section_content:
-                    continue
-                processed_content = str(section_content)
-            else:
-                processed_content = section_content
+            # Skip empty lists
+            if isinstance(section_content, list) and not section_content:
+                continue
+
+            processed_content = section_content if isinstance(section_content, str) else str(section_content)
 
             result.extend(
                 [
@@ -465,11 +477,9 @@ def module_to_markdown_files(
 
         # Only consider classes and functions defined in this module
         # or directly assigned to this module
-        is_in_module = (hasattr(obj, "__module__") and obj.__module__ == module.__name__) or (
+        if (hasattr(obj, "__module__") and obj.__module__ == module.__name__) or (
             inspect.isclass(obj) or inspect.isfunction(obj)
-        )
-
-        if is_in_module:
+        ):
             try:
                 markdown = class_to_markdown(obj, github_repo=github_repo, branch=branch)
                 output_file = output_dir / f"{name}.mdx"
