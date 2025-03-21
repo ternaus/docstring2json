@@ -8,370 +8,21 @@ import importlib
 import inspect
 import logging
 import pkgutil
-import re
 from collections import defaultdict
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from google_docstring_parser import parse_google_docstring
 
-from google_docstring_2md.config import MAX_SIGNATURE_LINE_LENGTH
-from google_docstring_2md.reference_parser import format_references, parse_references
-from google_docstring_2md.utils import get_github_url
+from google_docstring_2md.docstring_processor import (
+    build_params_table,
+    process_description,
+    process_other_sections,
+)
+from google_docstring_2md.github_linker import GitHubConfig, add_github_link
+from google_docstring_2md.signature_formatter import format_signature, get_signature_params
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class GitHubConfig:
-    """Configuration for GitHub integration."""
-
-    github_repo: str | None = None
-    branch: str = "main"
-
-    def __post_init__(self) -> None:
-        """Initialize GitHub configuration."""
-        # No special handling needed - only accept GitHub URLs
-
-
-@dataclass
-class Parameter:
-    """Parameter information extracted from signature and docstring."""
-
-    name: str
-    type: str
-    default: Any
-    description: str = ""
-
-
-def get_signature_params(obj: type | Callable) -> list[Parameter]:
-    """Extract parameters from object signature.
-
-    Args:
-        obj (Union[type, Callable]): Class or function to extract parameters from
-
-    Returns:
-        List of Parameter objects containing name, type, default value
-    """
-    try:
-        signature = inspect.signature(obj)
-        params = []
-
-        for name, param in signature.parameters.items():
-            # Get parameter type annotation
-            if param.annotation is inspect.Signature.empty:
-                param_type = ""
-            elif hasattr(param.annotation, "__name__"):
-                param_type = param.annotation.__name__
-            else:
-                param_type = str(param.annotation).replace("typing.", "")
-                # Clean up typing annotations (remove typing. prefix)
-                if "'" in param_type:
-                    param_type = param_type.split("'")[1]
-
-            # Get default value
-            default = param.default if param.default is not inspect.Signature.empty else None
-
-            params.append(Parameter(name=name, type=param_type, default=default))
-    except (ValueError, TypeError):
-        # Handle built-in types, Exception classes, or other types without a signature
-        logger.debug("Could not get signature for %s, returning empty parameters list", obj.__name__)
-        return []
-    else:
-        return params
-
-
-def format_default_value(value: object) -> str:
-    """Format default value for signature display.
-
-    Args:
-        value (object): Parameter default value
-
-    Returns:
-        Formatted string representation of the value
-    """
-    if value is None:
-        return "None"
-    return f"'{value}'" if isinstance(value, str) else str(value)
-
-
-def _escape_mdx_special_chars(text: str) -> str:
-    """Escape special characters that might cause issues in MDX files.
-
-    Args:
-        text (str): Text to escape
-
-    Returns:
-        str: Escaped text safe for MDX files
-    """
-    if not text:
-        return text
-
-    # Escape characters that might cause parsing issues in MDX
-    escaped = text.replace("<", "\\<").replace(">", "\\>").replace("=", "\\=")
-
-    # Replace multiple backslashes (e.g. \\n) with a code format
-    # This is to avoid issues with LaTeX-like code that uses backslashes
-    escaped = re.sub(r"\\{2,}", lambda m: f"`{m.group(0)}`", escaped)
-
-    # Escape curly braces, which are special in MDX/JSX
-    return escaped.replace("{", "\\{").replace("}", "\\}")
-
-
-def format_section_content(section: str, content: str) -> str:
-    """Format section content, handling special cases like code examples.
-
-    Args:
-        section (str): Section name (e.g. "Examples", "Notes")
-        content (str): Raw section content
-
-    Returns:
-        Formatted content with proper markdown
-    """
-    examples_sections = {"Example", "Examples"}
-    references_sections = {"References", "Reference"}
-
-    if section in examples_sections and (">>>" in content or "..." in content):
-        lines = []
-        for line_content in content.split("\n"):
-            line_stripped = line_content.strip()
-            if line_stripped.startswith((">>> ", "... ")):
-                lines.append(line_stripped[4:])
-            elif line_stripped:
-                lines.append(line_stripped)
-        return "```python\n" + "\n".join(lines) + "\n```"
-
-    if section in references_sections:
-        references = parse_references(content)
-        return format_references(references, escape_func=_escape_mdx_special_chars)
-
-    # Use code blocks instead of PreserveFormat
-    return "```\n" + content + "\n```"
-
-
-def _format_long_signature(obj_name: str, param_parts: list[str]) -> str:
-    """Format a long function signature with line breaks and indentation.
-
-    Args:
-        obj_name (str): Name of the object (function/class)
-        param_parts (list[str]): List of formatted parameter strings
-
-    Returns:
-        str: Formatted signature with line breaks
-    """
-    # Indent parameters to align with the opening parenthesis
-    indent_size = len(obj_name) + 1  # Function name + opening parenthesis
-    indentation = " " * indent_size
-
-    # Start with the function name and opening parenthesis
-    signature_lines = [f"{obj_name}("]
-
-    # Add parameters with indentation
-    for i, param in enumerate(param_parts):
-        # Add comma if not the last parameter
-        suffix = "," if i < len(param_parts) - 1 else ""
-        signature_lines.append(f"{indentation}{param}{suffix}")
-
-    # Close the parenthesis
-    signature_lines.append(")")
-
-    # Join the lines with newlines
-    return "\n".join(signature_lines)
-
-
-def _format_signature(obj: type | Callable, params: list[Parameter]) -> str:
-    """Format object signature for documentation.
-
-    Args:
-        obj (Union[type, Callable]): Class or function object
-        params (list[Parameter]): List of parameters
-
-    Returns:
-        Formatted signature as string
-    """
-    # If no parameters, return a simple signature
-    if not params:
-        signature = f"{obj.__name__}()"
-    else:
-        # Format each parameter
-        param_parts = [f"{p.name}={format_default_value(p.default)}" for p in params]
-
-        # Check if the signature would be too long
-        full_line = f"{obj.__name__}({', '.join(param_parts)})"
-
-        # If the signature is short enough, use a single line
-        if len(full_line) <= MAX_SIGNATURE_LINE_LENGTH:
-            signature = full_line
-        else:
-            # For long signatures, format with line breaks and indentation
-            signature = _format_long_signature(obj.__name__, param_parts)
-
-    # Handle return annotation for functions
-    if inspect.isfunction(obj) and obj.__annotations__.get("return"):
-        return_type = obj.__annotations__["return"]
-        ret_type_str = return_type.__name__ if hasattr(return_type, "__name__") else str(return_type)
-        signature += f" -> {ret_type_str}"
-
-    return signature
-
-
-def _process_description(parsed: dict) -> str:
-    """Process description section from parsed docstring.
-
-    Args:
-        parsed (dict): Parsed docstring dictionary
-
-    Returns:
-        Formatted description as string
-    """
-    if "Description" not in parsed:
-        return ""
-
-    desc = parsed["Description"]
-    if not isinstance(desc, str):
-        desc = str(desc)
-
-    # Escape special characters in the description
-    desc = _escape_mdx_special_chars(desc)
-
-    return f"{desc}\n"
-
-
-def _extract_param_docs(param: Parameter, param_docs: dict, obj: type | Callable) -> tuple[str, str]:
-    """Extract parameter documentation info.
-
-    Args:
-        param (Parameter): Parameter object
-        param_docs (dict): Dictionary mapping parameter names to docstring info
-        obj (Union[type, Callable]): Class or function object
-
-    Returns:
-        Tuple of (type, description)
-    """
-    # Get parameter description from docstring or use empty string
-    desc = ""
-    param_name = param.name
-
-    # If our parameter is in the docstring, use that info
-    if param_name in param_docs:
-        desc = param_docs[param_name].get("description", "")
-        if not isinstance(desc, str):
-            desc = str(desc)
-
-        # Get type from docstring if available
-        doc_type = param_docs[param_name].get("type", "")
-    else:
-        # If parameter not found in docstring, use type from signature
-        doc_type = param.type
-
-    # If no type could be found, check annotations
-    if not doc_type and param_name in obj.__annotations__:
-        annotation = obj.__annotations__[param_name]
-        if hasattr(annotation, "__name__"):
-            doc_type = annotation.__name__
-        else:
-            doc_type = str(annotation).replace("typing.", "")
-            if "'" in doc_type:
-                doc_type = doc_type.split("'")[1]
-
-    if not isinstance(doc_type, str):
-        doc_type = str(doc_type)
-
-    # Escape special characters for type
-    doc_type = _escape_mdx_special_chars(doc_type)
-
-    return doc_type, desc
-
-
-def _build_params_table(params: list[Parameter], parsed: dict, obj: type | Callable) -> list[str]:
-    """Build a parameters table from the docstring and signature.
-
-    Args:
-        params (list): List of parameter objects from signature
-        parsed (dict): Parsed docstring dictionary
-        obj (Union[type, Callable]): Class or function object
-
-    Returns:
-        List of markdown strings for the parameters table
-    """
-    # Skip parameters table if no parameters
-    if not params or all(param.name in {"self", "cls"} for param in params):
-        return []
-
-    # Use standard markdown table
-    result = [
-        "\n**Parameters**\n",
-        "| Name | Type | Description |\n",
-        "|------|------|-------------|\n",
-    ]
-
-    # Create a dictionary to lookup parameter info from docstring
-    param_docs = {}
-    if "Args" in parsed:
-        param_docs = {arg["name"]: arg for arg in parsed["Args"]}
-
-    for param in params:
-        doc_type, desc = _extract_param_docs(param, param_docs, obj)
-
-        # Escape the parameter name
-        param_name = _escape_mdx_special_chars(param.name)
-
-        # Handle description formatting
-        if desc:
-            # First escape special characters in the description
-            safe_desc = _escape_mdx_special_chars(desc)
-
-            # For multi-line content, we'll replace escaped newlines with actual HTML tags
-            # This way the HTML tags won't get escaped by _escape_mdx_special_chars
-            if "\n" in desc:
-                # Replace newlines with unescaped HTML line breaks
-                # We need to make sure we don't escape the HTML tags
-                html_breaks = safe_desc.replace("\n", "<br/>")
-                # Now make an unescaped pre tag wrapper
-                safe_desc = f"<pre>{html_breaks}</pre>"
-
-                # Replace the escaped < and > in our HTML tags with actual < and >
-                safe_desc = safe_desc.replace("\\<br/\\>", "<br/>")
-                safe_desc = safe_desc.replace("\\<pre\\>", "<pre>")
-                safe_desc = safe_desc.replace("\\</pre\\>", "</pre>")
-        else:
-            safe_desc = ""
-
-        result.append(f"| {param_name} | {doc_type} | {safe_desc} |\n")
-
-    return result
-
-
-def _process_other_sections(parsed: dict) -> list[str]:
-    """Process sections other than Description and Args.
-
-    Args:
-        parsed (dict): Parsed docstring dictionary
-
-    Returns:
-        List of markdown strings for the other sections
-    """
-    result = []
-
-    for section, section_content in parsed.items():
-        if section not in ["Description", "Args"]:
-            # Skip empty lists
-            if isinstance(section_content, list) and not section_content:
-                continue
-
-            processed_content = section_content if isinstance(section_content, str) else str(section_content)
-
-            result.extend(
-                [
-                    f"\n**{section}**\n",
-                    format_section_content(section, processed_content),
-                    "\n",
-                ],
-            )
-
-    return result
 
 
 def class_to_markdown(obj: type | Callable, *, github_repo: str | None = None, branch: str = "main") -> str:
@@ -395,7 +46,7 @@ def class_to_markdown(obj: type | Callable, *, github_repo: str | None = None, b
     params = get_signature_params(obj)
 
     # Format and add the signature
-    signature = _format_signature(obj, params)
+    signature = format_signature(obj, params)
 
     # Add the object name and signature
     sections.extend(
@@ -406,45 +57,24 @@ def class_to_markdown(obj: type | Callable, *, github_repo: str | None = None, b
     )
 
     # Add GitHub link if github_repo is provided
-    if github_repo:
-        github_url = get_github_url(obj, github_repo, branch)
-        if github_url:
-            # GitHub SVG icon (simplified)
-            github_icon = (
-                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" '
-                'fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 '
-                "0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53"
-                ".63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 "
-                "0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36"
-                ".09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75"
-                "-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42"
-                '-3.58-8-8-8z"/></svg>'
-            )
-
-            # Enhanced GitHub link with class that can be styled at the Docusaurus level
-            sections.append(
-                f'<div className="github-source-container">\n'
-                f'  <span className="github-icon">{github_icon}</span>\n'
-                f'  <a href="{github_url}" className="github-source-link">View source on GitHub</a>\n'
-                f"</div>\n\n",
-            )
+    add_github_link(sections, obj, github_repo, branch)
 
     # Parse docstring
     docstring = obj.__doc__ or ""
     parsed = parse_google_docstring(docstring)
 
     # Add description
-    description = _process_description(parsed)
+    description = process_description(parsed)
     if description:
         sections.append(description)
 
     # Add parameters table if we have parameters
     if params:
-        param_table = _build_params_table(params, parsed, obj)
+        param_table = build_params_table(params, parsed, obj)
         sections.extend(param_table)
 
     # Add remaining sections
-    other_sections = _process_other_sections(parsed)
+    other_sections = process_other_sections(parsed)
     sections.extend(other_sections)
 
     return "".join(sections)
@@ -741,6 +371,34 @@ def _group_modules_by_file(
     return file_to_modules
 
 
+def _has_documentable_members(
+    module: object,
+    *,
+    exclude_private: bool,
+) -> bool:
+    """Check if a module has documentable members.
+
+    Args:
+        module (object): Module to check
+        exclude_private (bool): Whether to exclude private members
+
+    Returns:
+        bool: True if the module has documentable members
+    """
+    for name, obj in inspect.getmembers(module):
+        if exclude_private and name.startswith("_"):
+            continue
+
+        if (
+            (inspect.isclass(obj) or inspect.isfunction(obj))
+            and hasattr(obj, "__module__")
+            and obj.__module__ == module.__name__
+        ):
+            return True
+
+    return False
+
+
 def _process_module_file(
     file_path: str,
     modules: list[tuple[object, str]],
@@ -836,34 +494,6 @@ def _process_module_file(
     except (ValueError, TypeError, AttributeError, ImportError, OSError):
         logger.exception(f"Error processing file {file_path}")
         return False
-
-
-def _has_documentable_members(
-    module: object,
-    *,
-    exclude_private: bool,
-) -> bool:
-    """Check if a module has documentable members.
-
-    Args:
-        module (object): Module to check
-        exclude_private (bool): Whether to exclude private members
-
-    Returns:
-        bool: True if the module has documentable members
-    """
-    for name, obj in inspect.getmembers(module):
-        if exclude_private and name.startswith("_"):
-            continue
-
-        if (
-            (inspect.isclass(obj) or inspect.isfunction(obj))
-            and hasattr(obj, "__module__")
-            and obj.__module__ == module.__name__
-        ):
-            return True
-
-    return False
 
 
 def package_to_markdown_structure(

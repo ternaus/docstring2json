@@ -2,13 +2,13 @@
 
 import pytest
 
-from google_docstring_2md.converter import (
-    _escape_mdx_special_chars,
+from google_docstring_2md.converter import class_to_markdown
+from google_docstring_2md.docstring_processor import (
+    escape_mdx_special_chars,
+    extract_param_docs,
     format_section_content,
-    _extract_param_docs,
-    class_to_markdown,
-    Parameter,
 )
+from google_docstring_2md.signature_formatter import Parameter
 
 
 @pytest.mark.parametrize(
@@ -24,7 +24,7 @@ from google_docstring_2md.converter import (
 )
 def test_escape_mdx_special_chars(input_text, expected_output):
     """Test that MDX special characters are properly escaped."""
-    result = _escape_mdx_special_chars(input_text)
+    result = escape_mdx_special_chars(input_text)
     assert result == expected_output
 
 
@@ -107,7 +107,7 @@ def test_extract_param_docs_escaping(
     class TestObj:
         __annotations__ = {}
 
-    doc_type, desc = _extract_param_docs(param, param_docs, TestObj)
+    doc_type, desc = extract_param_docs(param, param_docs, TestObj)
 
     assert doc_type == expected_type
     assert desc == expected_desc
