@@ -32,6 +32,9 @@ docstring2md albumentations -o ./albumentations_docs
 
 # Exclude private classes and methods
 docstring2md pandas --exclude-private -o ./pandas_docs
+
+# Generate docs with GitHub source links
+docstring2md albumentations -o ./docusaurus-test/docs --github-repo https://github.com/albumentations-team/albumentations
 ```
 
 ### Python API
