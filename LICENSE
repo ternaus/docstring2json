@@ -1,0 +1,58 @@
+# CUSTOM LICENSE AGREEMENT FOR GOOGLE DOCSTRING TO MARKDOWN CONVERTER
+
+Copyright (c) 2025 Vladimir Iglovikov
+
+## 1. DEFINITIONS
+
+"Software" refers to the Google Docstring Parser library, including all source code, documentation, and associated files.
+
+"Licensor" refers to Vladimir Iglovikov, the copyright holder of the Software.
+
+"Albumentations Team" refers to all projects hosted under the GitHub organization at https://github.com/albumentations-team.
+
+"User" refers to any individual or entity that uses, copies, modifies, or distributes the Software.
+
+## 2. GRANT OF LICENSE
+
+### 2.1 Albumentations Team Projects Use
+The Licensor hereby grants, free of charge, to all projects within the Albumentations Team GitHub organization and their official contributors the right to use, copy, modify, merge, publish, and distribute the Software for the purpose of developing and maintaining any project within the Albumentations Team organization.
+
+### 2.2 All Other Use
+All other Users, including but not limited to individuals, commercial entities, non-profit organizations, and open source projects other than Albumentations, must obtain a paid license from the Licensor before using, copying, modifying, or distributing the Software for any purpose.
+
+## 3. RESTRICTIONS
+
+### 3.1 General Restrictions
+Without a paid license, no User (except as specified in Section 2.1) may:
+- Use the Software for any purpose
+- Copy, modify, or distribute the Software
+- Create derivative works based on the Software
+- Sublicense the Software
+
+### 3.2 Albumentations Team Restrictions
+The Albumentations Team projects may not:
+- Grant rights to the Software to any third party beyond what is necessary for the development and maintenance of the Albumentations Team projects
+- Use the Software for purposes unrelated to the Albumentations Team projects
+
+## 4. OBTAINING A PAID LICENSE
+
+To obtain a paid license for the Software, please contact:
+
+Vladimir Iglovikov
+iglovikov@gmail.com
+
+## 5. WARRANTY DISCLAIMER
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## 6. TERMINATION
+
+This license automatically terminates if you violate any of its terms. Upon termination, you must cease all use of the Software and destroy all copies of the Software in your possession.
+
+## 7. MISCELLANEOUS
+
+This License represents the complete agreement concerning the subject matter hereof. If any provision of this License is held to be unenforceable, such provision shall be reformed only to the extent necessary to make it enforceable.
+
+## 8. GOVERNING LAW
+
+This License shall be governed by the laws of the United States of America.

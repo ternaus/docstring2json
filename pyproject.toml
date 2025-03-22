@@ -1,0 +1,158 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+
+requires = [ "setuptools>=45", "wheel" ]
+
+[project]
+name = "google-docstring-2md"
+version = "0.0.1"
+description = "A tool to convert Google-style docstrings to markdown format"
+readme = "README.md"
+keywords = [
+  "docstring",
+  "documentation",
+  "docusaurus",
+  "google-style",
+  "markdown",
+  "parser",
+  "python",
+  "static-analysis",
+  "type-hints",
+]
+license = { text = "Custom License - See LICENSE file for details" }
+maintainers = [ { name = "Vladimir Iglovikov" } ]
+authors = [
+  { name = "Vladimir Iglovikov", email = "iglovikov@gmail.com" },
+]
+requires-python = ">=3.10"
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: Other/Proprietary License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Software Development :: Documentation",
+  "Topic :: Software Development :: Libraries",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Typing :: Typed",
+]
+
+dependencies = [
+  "docstring-parser>=0.15",
+  "google-docstring-parser",
+  "tqdm>=4.65",
+]
+
+optional-dependencies.dev = [
+  "pre-commit>=3.5",
+  "pytest>=8.3.3",
+]
+urls."bug tracker" = "https://github.com/ternaus/google-docstring-2md/issues"
+urls.homepage = "https://github.com/ternaus/google-docstring-2md"
+scripts.docstring2md = "google_docstring_2md.__main__:main"
+
+[tool.setuptools]
+packages = [ "google_docstring_2md" ]
+
+[tool.setuptools.package-data]
+google_docstring_2md = [ "*.md" ]
+
+[tool.setuptools.exclude-package-data]
+"*" = [ "tests*" ]
+
+[tool.ruff]
+# Exclude a variety of commonly ignored directories.
+target-version = "py310"
+
+line-length = 120
+indent-width = 4
+
+# Assume Python 3.9
+exclude = [
+  ".bzr",
+  ".cursor",
+  ".direnv",
+  ".eggs",
+  ".git",
+  ".git-rewrite",
+  ".hg",
+  ".ipynb_checkpoints",
+  ".mypy_cache",
+  ".nox",
+  ".pants.d",
+  ".pyenv",
+  ".pytest_cache",
+  ".pytype",
+  ".ruff_cache",
+  ".svn",
+  ".tox",
+  ".venv",
+  ".vscode",
+  "__pypackages__",
+  "_build",
+  "buck-out",
+  "build",
+  "dist",
+  "node_modules",
+  "site",
+  "site-packages",
+  "tests",
+  "venv",
+]
+
+format.indent-style = "space"
+# Like Black, respect magic trailing commas.
+format.quote-style = "double"
+# Like Black, indent with spaces, rather than tabs.
+format.line-ending = "auto"
+format.skip-magic-trailing-comma = false
+# Like Black, automatically detect the appropriate line ending.
+lint.select = [ "ALL" ]
+
+lint.ignore = [
+  # Allow empty docstrings - we've addressed this with proper docstrings
+  "EM102",
+  # Allow boolean positional parameter with default value - we've addressed this with keyword-only parameters
+  "FBT001",
+  # Allow f-strings in logging - we've addressed this with proper string formatting
+  "G004",
+  # Allow return statements in try blocks - the current structure is clearer
+  "TRY300",
+]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+
+lint.explicit-preview-rules = true
+
+lint.fixable = [ "ALL" ]
+lint.unfixable = [  ]
+# Allow unused variables when underscore-prefixed.
+lint.dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+# Like Black, use double quotes for strings.
+lint.pydocstyle.convention = "google"
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+follow_imports = "silent"
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_any_generics = true
+check_untyped_defs = true
+no_implicit_reexport = true
+
+# for strict mypy: (this is the tricky one :-))
+disallow_untyped_defs = true
+
+[tool.docstring_checker]
+paths = [ "google_docstring_2md" ]
+require_param_types = true
+check_type_consistency = true
+verbose = false
