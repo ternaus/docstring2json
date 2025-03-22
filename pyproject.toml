@@ -19,7 +19,7 @@ keywords = [
   "static-analysis",
   "type-hints",
 ]
-license = "Proprietary"
+license = { text = "Custom License - See LICENSE file for details" }
 maintainers = [ { name = "Vladimir Iglovikov" } ]
 authors = [
   { name = "Vladimir Iglovikov", email = "iglovikov@gmail.com" },
