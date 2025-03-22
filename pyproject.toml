@@ -19,7 +19,7 @@ keywords = [
   "static-analysis",
   "type-hints",
 ]
-license = { text = "Custom License - See LICENSE file for details" }
+license = "Proprietary"
 maintainers = [ { name = "Vladimir Iglovikov" } ]
 authors = [
   { name = "Vladimir Iglovikov", email = "iglovikov@gmail.com" },
@@ -29,7 +29,6 @@ classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",
   "Intended Audience :: Science/Research",
-  "License :: Other/Proprietary License",
   "Operating System :: OS Independent",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3 :: Only",
