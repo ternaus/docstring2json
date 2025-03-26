@@ -4,22 +4,23 @@ This module provides functions to convert Python classes and functions with Goog
 docstrings into TSX documentation components.
 """
 
-import inspect
 import logging
 from collections.abc import Callable
 from pathlib import Path
 
 from google_docstring_parser import parse_google_docstring
 
-from utils.processor import (
-    build_params_table,
+from docstring_2tsx.processor import (
+    build_tsx_params_table,
+    format_tsx_section,
     process_description,
-    process_other_sections,
 )
 from utils.shared import (
+    collect_module_members,
     collect_package_modules,
     group_modules_by_file,
     has_documentable_members,
+    normalize_anchor_id,
     process_module_file,
 )
 from utils.signature_formatter import format_signature, get_signature_params
@@ -28,31 +29,30 @@ logger = logging.getLogger(__name__)
 
 
 def get_source_line(obj: type | Callable) -> int:
-    """Get the source line number for an object.
+    """Get the source line number for a class or function.
 
     Args:
         obj: Class or function to get source line for
 
     Returns:
-        Line number where the object is defined
+        Line number in the source file
     """
     try:
-        return inspect.getsourcelines(obj)[1]
-    except (OSError, TypeError):
-        # If we can't get the source line, return 1 as a fallback
+        return obj.__code__.co_firstlineno
+    except AttributeError:
         return 1
 
 
-def class_to_tsx(obj: type | Callable, *, github_repo: str | None = None, branch: str = "main") -> str:
+def class_to_tsx(obj: type | Callable, github_repo: str | None = None, branch: str = "main") -> str:
     """Convert class or function to TSX component.
 
     This function generates TSX documentation component for a class or function,
     extracting information from its docstring and signature.
 
     Args:
-        obj (Union[type, Callable]): Class or function to document
-        github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
-        branch (str): The branch name to link to (default: "main")
+        obj: Class or function to document
+        github_repo: Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
+        branch: Branch name for GitHub links (default: "main")
 
     Returns:
         TSX component as string
@@ -112,12 +112,13 @@ def class_to_tsx(obj: type | Callable, *, github_repo: str | None = None, branch
 
     # Add parameters table if we have parameters
     if params:
-        param_table = build_params_table(params, parsed, obj)
+        param_table = build_tsx_params_table(params, parsed, obj)
         sections.extend(param_table)
 
-    # Add remaining sections
-    other_sections = process_other_sections(parsed)
-    sections.extend(other_sections)
+    # Add other sections (returns, raises, etc.)
+    for section, content in parsed.items():
+        if section not in ["Description", "Args"]:
+            sections.append(format_tsx_section(section, content))
 
     # Wrap everything in a TSX component
     return f"""import React from 'react';
@@ -132,65 +133,91 @@ export default function {obj_name}() {{
 """
 
 
+def file_to_tsx(module: object, module_name: str, *, github_repo: str | None = None, branch: str = "main") -> str:
+    """Convert a module to a single TSX document.
+
+    Args:
+        module: The module object to document
+        module_name: Name of the module for the heading
+        github_repo: Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
+        branch: Branch name for GitHub links (default: "main")
+
+    Returns:
+        str: The TSX content
+    """
+    # Collect module members
+    classes, functions = collect_module_members(module)
+
+    # Normalize the module_name for the anchor
+    module_anchor = module_name.replace(".", "-")
+
+    content = [
+        f"<h1>{module_name}</h1>",
+        f'<a id="{module_anchor}"></a>',
+    ]
+
+    # Process classes and functions
+    for name, obj in sorted(classes + functions):
+        # Add anchor for the item
+        anchor_id = normalize_anchor_id(module_name, name)
+        content.append(f'<a id="{anchor_id}"></a>')
+
+        # Convert to TSX
+        tsx = class_to_tsx(obj, github_repo=github_repo, branch=branch)
+
+        # Extract the content from the TSX component
+        tsx_content = tsx.split("return (")[1].split(");")[0].strip()
+        content.append(tsx_content)
+
+    return "\n".join(content)
+
+
 def module_to_tsx_files(
     module: object,
     output_dir: Path,
     *,
-    exclude_private: bool = False,
     github_repo: str | None = None,
     branch: str = "main",
 ) -> None:
-    """Generate TSX files for all classes and functions in a module.
+    """Convert a module to TSX files.
 
     Args:
-        module (object): Python module
-        output_dir (Path): Directory to write TSX files
-        exclude_private (bool): Whether to exclude private classes and methods
-        github_repo (str | None): Base URL of the GitHub repository
-        branch (str): The branch name to link to (default: "main")
+        module: Python module to convert
+        output_dir: Directory to write TSX files
+        github_repo: Base URL of the GitHub repository
+        branch: Branch name for GitHub links
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Process classes and functions
-    for name, obj in inspect.getmembers(module):
-        # Skip private members if exclude_private is True
-        if exclude_private and name.startswith("_"):
-            continue
+    # Collect classes and functions
+    classes, functions = collect_module_members(module)
 
-        # Only consider classes and functions defined in this module
-        # or directly assigned to this module
-        if (hasattr(obj, "__module__") and obj.__module__ == module.__name__) or (
-            inspect.isclass(obj) or inspect.isfunction(obj)
-        ):
-            try:
-                tsx = class_to_tsx(obj, github_repo=github_repo, branch=branch)
-                output_file = output_dir / f"{name}.tsx"
-                output_file.write_text(tsx)
-            except (ValueError, TypeError, AttributeError):
-                logger.exception("Error processing %s", name)
+    # Convert each class and function
+    for name, obj in classes + functions:
+        content = class_to_tsx(obj, github_repo=github_repo, branch=branch)
+        output_file = output_dir / f"{name}.tsx"
+        output_file.write_text(content)
 
 
 def package_to_tsx_files(
     package: object,
     output_dir: Path,
     *,
-    exclude_private: bool = True,
     github_repo: str | None = None,
     branch: str = "main",
 ) -> None:
-    """Generate TSX files for all modules in a package.
+    """Convert a package to TSX files.
 
     Args:
-        package (object): Python package
-        output_dir (Path): Directory to write TSX files
-        exclude_private (bool): Whether to exclude private modules (starting with _)
-        github_repo (str | None): Base URL of the GitHub repository
-        branch (str): The branch name to link to (default: "main")
+        package: Python package
+        output_dir: Directory to write TSX files
+        github_repo: Base URL of the GitHub repository
+        branch: Branch name for GitHub links
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Collect all modules in the package
-    modules = collect_package_modules(package, exclude_private=exclude_private)
+    modules = collect_package_modules(package)
 
     # Group modules by file
     module_groups = group_modules_by_file(modules)
@@ -210,7 +237,7 @@ def package_to_tsx_files(
                 file_modules,
                 github_repo=github_repo,
                 branch=branch,
-                converter_func=class_to_tsx,
+                converter_func=file_to_tsx,
             )
 
             # Write the content to a file

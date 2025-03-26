@@ -27,7 +27,7 @@ class ModuleImportError(ImportError):
 
 
 def import_module_from_file(file_path: Path) -> ModuleType:
-    """Import a Python module from a file path.
+    """Import a module from a file path.
 
     Args:
         file_path: Path to the Python file
@@ -38,9 +38,7 @@ def import_module_from_file(file_path: Path) -> ModuleType:
     Raises:
         ModuleImportError: If the module cannot be imported
     """
-    spec = importlib.util.spec_from_file_location(file_path.stem, file_path)
-    if not spec or not spec.loader:
-        raise ModuleImportError(file_path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    try:
+        return importlib.import_module(file_path.name)
+    except ImportError as e:
+        raise ModuleImportError(file_path) from e

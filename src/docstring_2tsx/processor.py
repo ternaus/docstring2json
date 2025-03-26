@@ -6,10 +6,7 @@ This module provides functions for converting docstring sections into TSX compon
 import re
 from collections.abc import Callable
 
-from utils.processor import (
-    build_params_table,
-    process_other_sections,
-)
+from utils.reference_parser import format_references_section
 from utils.signature_formatter import Parameter
 
 
@@ -42,7 +39,7 @@ def process_description(parsed: dict) -> str:
         parsed (dict): Parsed docstring dictionary
 
     Returns:
-        Formatted description as TSX component
+        Formatted description as string
     """
     if "Description" not in parsed:
         return ""
@@ -84,32 +81,74 @@ def extract_param_docs(param: Parameter, param_docs: dict, obj: type | Callable)
     return doc_type, desc
 
 
+def build_tsx_params_table(params: list, parsed: dict) -> str:
+    """Build a parameters table for TSX.
+
+    Args:
+        params: List of parameters
+        parsed: Parsed docstring
+
+    Returns:
+        str: TSX formatted parameters table
+    """
+    if not params:
+        return ""
+
+    sections = [
+        "<h2>Parameters</h2>",
+        "<table>",
+        "<thead>",
+        "<tr>",
+        "<th>Name</th>",
+        "<th>Type</th>",
+        "<th>Description</th>",
+        "</tr>",
+        "</thead>",
+        "<tbody>",
+    ]
+
+    # Add each parameter
+    parsed_params = parsed.get("Args", [])
+    for param in params:
+        param_doc = next((p for p in parsed_params if p["name"] == param.name), None)
+        description = param_doc["description"] if param_doc else ""
+        sections.extend(
+            [
+                "<tr>",
+                f"<td><code>{param.name}</code></td>",
+                f"<td><code>{param.type}</code></td>",
+                f"<td>{escape_tsx_special_chars(description)}</td>",
+                "</tr>",
+            ],
+        )
+
+    sections.extend(["</tbody>", "</table>"])
+    return "".join(sections)
+
+
 def format_tsx_section(section: str, content: str) -> str:
     """Format section content for TSX.
 
     Args:
-        section (str): Section name (e.g. "Examples", "Notes")
-        content (str): Raw section content
+        section: Section name
+        content: Section content
 
     Returns:
-        Formatted content as TSX component
+        str: Formatted TSX content
     """
-    # For now, we'll use the same formatting as MDX
-    # In the future, we can add TSX-specific formatting
-    return process_other_sections({section: content})[0]
+    section_formatters = {
+        "Returns": lambda c: f"<h3>Returns</h3><p>{c}</p>",
+        "Raises": lambda c: f"<h3>Raises</h3><p>{c}</p>",
+        "Example": lambda c: f"<h3>Example</h3><pre><code>{c}</code></pre>",
+        "Examples": lambda c: f"<h3>Examples</h3><pre><code>{c}</code></pre>",
+        "Note": lambda c: f"<div className='note'><h3>Note</h3><p>{c}</p></div>",
+        "Warning": lambda c: f"<div className='warning'><h3>Warning</h3><p>{c}</p></div>",
+        "References": lambda c: f"<h3>References</h3>{format_references_section(c)}",
+    }
 
+    formatter = section_formatters.get(section)
+    if formatter:
+        return formatter(content)
 
-def build_tsx_params_table(params: list, parsed: dict, obj: type | Callable) -> str:
-    """Build a parameters table for TSX.
-
-    Args:
-        params (list): List of parameter objects from signature
-        parsed (dict): Parsed docstring dictionary
-        obj (Union[type, Callable]): Class or function object
-
-    Returns:
-        TSX component for parameters table
-    """
-    # For now, we'll use the same table format as MDX
-    # In the future, we can create a more TSX-friendly table component
-    return "".join(build_params_table(params, parsed, obj))
+    # Default case for unknown sections
+    return f"<h3>{section}</h3><p>{content}</p>"

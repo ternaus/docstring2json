@@ -1,9 +1,9 @@
 """Utilities for processing docstrings into TSX components."""
 
-from google_docstring_parser import ParsedGoogleDocstring
+from typing import Any
 
 
-def process_description(parsed: ParsedGoogleDocstring) -> str:
+def process_description(parsed: dict[str, Any]) -> str:
     """Process the description section of a docstring.
 
     Args:
@@ -12,12 +12,12 @@ def process_description(parsed: ParsedGoogleDocstring) -> str:
     Returns:
         TSX formatted description
     """
-    if not parsed.description:
+    if not parsed.get("description"):
         return ""
-    return f"<p>{parsed.description}</p>"
+    return f"<p>{parsed['description']}</p>"
 
 
-def build_params_table(params: list[str], parsed: ParsedGoogleDocstring) -> list[str]:
+def build_params_table(params: list[str], parsed: dict[str, Any]) -> list[str]:
     """Build a table of parameters in TSX format.
 
     Args:
@@ -43,9 +43,10 @@ def build_params_table(params: list[str], parsed: ParsedGoogleDocstring) -> list
     ]
 
     # Add each parameter
+    parsed_params = parsed.get("params", [])
     for param in params:
-        param_doc = next((p for p in parsed.params if p.name == param), None)
-        description = param_doc.description if param_doc else ""
+        param_doc = next((p for p in parsed_params if p["name"] == param), None)
+        description = param_doc["description"] if param_doc else ""
         sections.extend(
             [
                 "<tr>",
@@ -59,7 +60,7 @@ def build_params_table(params: list[str], parsed: ParsedGoogleDocstring) -> list
     return sections
 
 
-def process_other_sections(parsed: ParsedGoogleDocstring) -> list[str]:
+def process_other_sections(parsed: dict[str, Any]) -> list[str]:
     """Process remaining sections of a docstring.
 
     Args:
@@ -71,18 +72,18 @@ def process_other_sections(parsed: ParsedGoogleDocstring) -> list[str]:
     sections = []
 
     # Add returns section
-    if parsed.returns:
+    if returns := parsed.get("returns"):
         sections.extend(
             [
                 "<h2>Returns</h2>",
-                f"<p>{parsed.returns.description}</p>",
+                f"<p>{returns['description']}</p>",
             ],
         )
 
     # Add raises section
-    if parsed.raises:
+    if raises := parsed.get("raises", []):
         sections.extend(["<h2>Raises</h2>", "<ul>"])
-        sections.extend(f"<li><code>{exc.type_name}</code>: {exc.description}</li>" for exc in parsed.raises)
+        sections.extend(f"<li><code>{exc['type_name']}</code>: {exc['description']}</li>" for exc in raises)
         sections.append("</ul>")
 
     return sections

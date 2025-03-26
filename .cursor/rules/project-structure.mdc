@@ -1,0 +1,91 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+We are building a tool that takes python package and generates mdx or tsx files that will be later used in next.js
+documentation.
+
+Input:
+- name of the python package
+- output path
+- optionally path to the github repo describinbg the package
+
+Output:
+Folder with files that have exactly the same structure as python files in the package, but have mdx or tsx extension.
+
+In each file we should have docstrings of classes and functions. Similar to what mkdocstrings or sphinx does.
+
+Comments
+Both tsx and mdx functionalities have similar code like:
+- get files structure
+- extract signature
+
+etc
+
+The only difference is that what string representation do we output to the resulting files.
+
+---
+To parse docstrings use: google_docstring_parser
+
+----
+
+```python
+from google_docstring_parser import parse_google_docstring
+
+docstring = '''Apply elastic deformation to images, masks, bounding boxes, and keypoints.
+
+This transformation introduces random elastic distortions to the input data. It's particularly
+useful for data augmentation in training deep learning models, especially for tasks like
+image segmentation or object detection where you want to maintain the relative positions of
+features while introducing realistic deformations.
+
+Args:
+    alpha (float): Scaling factor for the random displacement fields. Higher values result in
+        more pronounced distortions. Default: 1.0
+    sigma (float): Standard deviation of the Gaussian filter used to smooth the displacement
+        fields. Higher values result in smoother, more global distortions. Default: 50.0
+
+Example:
+    >>> import albumentations as A
+    >>> transform = A.ElasticTransform(alpha=1, sigma=50, p=0.5)
+
+References:
+    - Original paper: Simard, P. Y., et al. "Best practices for convolutional neural networks applied to visual document analysis." ICDAR 2003
+    - Implementation details: https://example.com/elastic-transform
+'''
+
+parsed = parse_google_docstring(docstring)
+print(parsed)
+```
+
+output
+```python
+{
+    'Description': 'Apply elastic deformation to images, masks, bounding boxes, and keypoints.\n\nThis transformation introduces random elastic distortions to the input data. It\'s particularly\nuseful for data augmentation in training deep learning models, especially for tasks like\nimage segmentation or object detection where you want to maintain the relative positions of\nfeatures while introducing realistic deformations.',
+    'Args': [
+        {
+            'name': 'alpha',
+            'type': 'float',
+            'description': 'Scaling factor for the random displacement fields. Higher values result in\nmore pronounced distortions. Default: 1.0'
+        },
+        {
+            'name': 'sigma',
+            'type': 'float',
+            'description': 'Standard deviation of the Gaussian filter used to smooth the displacement\nfields. Higher values result in smoother, more global distortions. Default: 50.0'
+        }
+    ],
+    'Example': '>>> import albumentations as A\n>>> transform = A.ElasticTransform(alpha=1, sigma=50, p=0.5)',
+    'References': [
+        {
+            'description': 'Original paper',
+            'source': 'Simard, P. Y., et al. "Best practices for convolutional neural networks applied to visual document analysis." ICDAR 2003'
+        },
+        {
+            'description': 'Implementation details',
+            'source': 'https://example.com/elastic-transform'
+        }
+    ]
+}
+```
