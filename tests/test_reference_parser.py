@@ -2,7 +2,7 @@
 
 import pytest
 
-from google_docstring_2md.reference_parser import (
+from src.utils.reference_parser import (
     parse_references,
     format_url,
     format_references,

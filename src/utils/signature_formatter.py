@@ -10,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from google_docstring_2md.config import MAX_SIGNATURE_LINE_LENGTH
+from .config import MAX_SIGNATURE_LINE_LENGTH
 
 logger = logging.getLogger(__name__)
 

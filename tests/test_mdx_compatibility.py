@@ -2,13 +2,13 @@
 
 import pytest
 
-from google_docstring_2md.converter import class_to_markdown
-from google_docstring_2md.docstring_processor import (
+from src.docstring_2md.converter import class_to_markdown
+from src.docstring_2md.processor import (
     escape_mdx_special_chars,
     extract_param_docs,
     format_section_content,
 )
-from google_docstring_2md.signature_formatter import Parameter
+from src.utils.signature_formatter import Parameter
 
 
 @pytest.mark.parametrize(

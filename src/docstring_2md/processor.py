@@ -7,8 +7,8 @@ Google-style docstrings into Markdown format.
 import re
 from collections.abc import Callable
 
-from google_docstring_2md.reference_parser import format_references, parse_references
-from google_docstring_2md.signature_formatter import Parameter
+from utils.reference_parser import format_references, parse_references
+from utils.signature_formatter import Parameter
 
 
 def escape_mdx_special_chars(text: str) -> str:

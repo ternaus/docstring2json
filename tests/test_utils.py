@@ -3,7 +3,7 @@
 import inspect
 import pytest
 
-from google_docstring_2md.utils import get_github_url
+from src.utils.github_linker import get_github_url
 
 
 # Create a dummy class and function for testing

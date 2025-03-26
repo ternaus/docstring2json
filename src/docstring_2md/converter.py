@@ -1,7 +1,7 @@
-"""Utilities for organizing Python documentation into a tree structure.
+"""Utilities for converting Google-style docstrings to Markdown.
 
-This module provides functions to convert Python packages into a structured tree
-of Markdown/MDX documentation files, preserving the original package structure.
+This module provides functions to convert Python classes and functions with Google-style
+docstrings into Markdown documentation.
 """
 
 import importlib
@@ -9,17 +9,255 @@ import inspect
 import logging
 import pkgutil
 from collections import defaultdict
+from collections.abc import Callable
 from pathlib import Path
 
-from tqdm import tqdm
+from google_docstring_parser import parse_google_docstring
 
-from google_docstring_2md.converter import (
-    GitHubConfig,
-    file_to_markdown,
-    module_to_markdown_files,
+from docstring_2md.processor import (
+    build_params_table,
+    process_description,
+    process_other_sections,
 )
+from utils.github_linker import GitHubConfig, add_github_link
+from utils.signature_formatter import format_signature, get_signature_params
 
 logger = logging.getLogger(__name__)
+
+
+def class_to_markdown(obj: type | Callable, *, github_repo: str | None = None, branch: str = "main") -> str:
+    """Convert class or function to markdown documentation.
+
+    This function generates markdown documentation for a class or function,
+    extracting information from its docstring and signature.
+
+    Args:
+        obj (Union[type, Callable]): Class or function to document
+        github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
+        branch (str): The branch name to link to (default: "main")
+
+    Returns:
+        Markdown formatted documentation string
+    """
+    sections = []
+
+    # Get object name and parameters
+    obj_name = obj.__name__
+    params = get_signature_params(obj)
+
+    # Format and add the signature
+    signature = format_signature(obj, params)
+
+    # Add the object name and signature
+    sections.extend(
+        [
+            f"# {obj_name}\n",
+            f"```python\n{signature}\n```\n",
+        ],
+    )
+
+    # Add GitHub link if github_repo is provided
+    add_github_link(sections, obj, github_repo, branch)
+
+    # Parse docstring
+    docstring = obj.__doc__ or ""
+    parsed = parse_google_docstring(docstring)
+
+    # Add description
+    description = process_description(parsed)
+    if description:
+        sections.append(description)
+
+    # Add parameters table if we have parameters
+    if params:
+        param_table = build_params_table(params, parsed, obj)
+        sections.extend(param_table)
+
+    # Add remaining sections
+    other_sections = process_other_sections(parsed)
+    sections.extend(other_sections)
+
+    return "".join(sections)
+
+
+def module_to_markdown_files(
+    module: object,
+    output_dir: Path,
+    *,
+    exclude_private: bool = False,
+    github_repo: str | None = None,
+    branch: str = "main",
+) -> None:
+    """Generate markdown files for all classes and functions in a module.
+
+    Args:
+        module (object): Python module
+        output_dir (Path): Directory to write markdown files
+        exclude_private (bool): Whether to exclude private classes and methods (starting with _)
+        github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
+        branch (str): The branch name to link to (default: "main")
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Process classes and functions
+    for name, obj in inspect.getmembers(module):
+        # Skip private members if exclude_private is True
+        if exclude_private and name.startswith("_"):
+            continue
+
+        # Only consider classes and functions defined in this module
+        # or directly assigned to this module
+        if (hasattr(obj, "__module__") and obj.__module__ == module.__name__) or (
+            inspect.isclass(obj) or inspect.isfunction(obj)
+        ):
+            try:
+                markdown = class_to_markdown(obj, github_repo=github_repo, branch=branch)
+                output_file = output_dir / f"{name}.mdx"
+                output_file.write_text(markdown)
+            except (ValueError, TypeError, AttributeError):
+                logger.exception("Error processing %s", name)
+
+
+def _collect_module_members(module: object) -> tuple[list[tuple[str, object]], list[tuple[str, object]]]:
+    """Collect classes and functions from a module.
+
+    Args:
+        module (object): Module to process
+
+    Returns:
+        Tuple containing lists of (name, object) pairs for classes and functions
+    """
+    classes = []
+    functions = []
+
+    for name, obj in inspect.getmembers(module):
+        if name.startswith("_"):
+            continue
+
+        if hasattr(obj, "__module__") and obj.__module__ == module.__name__:
+            if inspect.isclass(obj):
+                classes.append((name, obj))
+            elif inspect.isfunction(obj):
+                functions.append((name, obj))
+
+    return classes, functions
+
+
+def _normalize_anchor_id(module_name: str, name: str) -> str:
+    """Normalize anchor ID for consistent markdown navigation.
+
+    Args:
+        module_name (str): Module name
+        name (str): Object name
+
+    Returns:
+        str: Normalized anchor ID with dots replaced by hyphens
+    """
+    anchor_id = f"{module_name}.{name}"
+    return anchor_id.replace(".", "-")
+
+
+def _build_table_of_contents(classes: list[tuple[str, object]], functions: list[tuple[str, object]]) -> str:
+    """Build a table of contents for the markdown document.
+
+    Args:
+        classes (list): List of (name, object) pairs for classes
+        functions (list): List of (name, object) pairs for functions
+
+    Returns:
+        Markdown formatted table of contents
+    """
+    toc = ["# Table of Contents\n\n"]
+
+    # Add classes to ToC
+    for name, obj in sorted(classes):
+        module_name = obj.__module__
+        anchor_id = _normalize_anchor_id(module_name, name)
+        toc.append(f"* [{name}](#{anchor_id})\n")
+
+    # Add functions to ToC
+    for name, obj in sorted(functions):
+        module_name = obj.__module__
+        anchor_id = _normalize_anchor_id(module_name, name)
+        toc.append(f"* [{name}](#{anchor_id})\n")
+
+    toc.append("\n")
+    return "".join(toc)
+
+
+def _process_documentation_items(
+    items: list[tuple[str, object]],
+    section_title: str,
+    *,
+    github_repo: str | None = None,
+    branch: str = "main",
+) -> str:
+    """Process a list of documentation items (classes or functions).
+
+    Args:
+        items (list): List of (name, object) pairs to document
+        section_title (str): Section title (e.g., "Classes" or "Functions")
+        github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
+        branch (str): The branch name to link to (default: "main")
+
+    Returns:
+        Markdown formatted documentation for the items
+    """
+    if not items:
+        return ""
+
+    content = [f"**{section_title}**\n\n"]
+
+    for name, obj in sorted(items):
+        md = class_to_markdown(obj, github_repo=github_repo, branch=branch)
+
+        # Add anchor for the item
+        module_name = obj.__module__
+        anchor_id = _normalize_anchor_id(module_name, name)
+        content.append(f'<a id="{anchor_id}"></a>\n\n')
+
+        # Adjust heading level
+        lines = md.split("\n")
+        if lines and lines[0].startswith("# "):
+            lines[0] = f"## {lines[0][2:]}"
+
+        content.append("\n".join(lines) + "\n\n")
+
+    return "".join(content)
+
+
+def file_to_markdown(module: object, module_name: str, *, github_repo: str | None = None, branch: str = "main") -> str:
+    """Convert a module to a single markdown document.
+
+    Args:
+        module (object): The module object to document
+        module_name (str): Name of the module for the heading
+        github_repo (str | None): Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
+        branch (str): The branch name to link to (default: "main")
+
+    Returns:
+        str: The markdown content
+    """
+    # Collect module members
+    classes, functions = _collect_module_members(module)
+
+    # Normalize the module_name for the anchor
+    module_anchor = module_name.replace(".", "-")
+
+    content = [
+        f"# {module_name}\n\n",
+        _build_table_of_contents(classes, functions),
+        f'<a id="{module_anchor}"></a>\n\n',
+        f"# {module_name}\n\n",
+    ]
+
+    # Add class documentation
+    content.append(_process_documentation_items(classes, "Classes", github_repo=github_repo, branch=branch))
+
+    # Add function documentation
+    content.append(_process_documentation_items(functions, "Functions", github_repo=github_repo, branch=branch))
+
+    return "".join(content)
 
 
 def _process_mock_package(
@@ -185,7 +423,7 @@ def _process_module_file(
     *,
     exclude_private: bool,
     github_config: GitHubConfig | None = None,
-) -> None:
+) -> bool:
     """Process a module file and generate markdown documentation.
 
     Args:
@@ -194,6 +432,9 @@ def _process_module_file(
         output_dir (Path): Root directory for output
         exclude_private (bool): Whether to exclude private classes and methods
         github_config (GitHubConfig | None): Configuration for GitHub integration
+
+    Returns:
+        bool: True if the process was successful, False otherwise
     """
     if github_config is None:
         github_config = GitHubConfig()
@@ -211,7 +452,7 @@ def _process_module_file(
             exclude_private=exclude_private,
         ):
             logger.debug(f"Skipping empty __init__ file: {file_path}")
-            return None
+            return False
 
         # Determine the module path for directory structure
         # Use the module with the shortest name to determine the path
@@ -316,42 +557,32 @@ def package_to_markdown_structure(
         logger.info(f"Collecting modules in {package_name}...")
         modules_to_process = _collect_package_modules(package, package_name, exclude_private=exclude_private)
 
-        # Debug output for modules collected
-        logger.debug(f"Total modules collected: {len(modules_to_process)}")
-        for module, module_name in modules_to_process:
-            logger.debug(f"Module: {module_name} from {getattr(module, '__file__', 'Unknown file')}")
-
         # Group modules by file
         file_to_modules = _group_modules_by_file(modules_to_process)
-
-        # Debug output for file grouping
-        logger.debug(f"Total files to process: {len(file_to_modules)}")
-        for file_path, modules in file_to_modules.items():
-            logger.debug(f"File: {file_path} with {len(modules)} modules")
-            for _module, module_name in modules:
-                logger.debug(f"  - Module: {module_name}")
 
         # Process each file and generate markdown
         logger.info(f"Processing {len(file_to_modules)} files...")
         success_count = 0
         error_count = 0
 
-        for file_path, modules in tqdm(file_to_modules.items(), desc="Generating markdown"):
-            logger.debug(f"Processing file: {file_path}")
+        def _safe_process_module_file(file_path: str, modules: list[tuple[object, str]]) -> bool:
             try:
-                result = _process_module_file(
+                return _process_module_file(
                     file_path,
                     modules,
                     output_dir,
                     exclude_private=exclude_private,
                     github_config=github_config,
                 )
-                if result:
-                    success_count += 1
-                else:
-                    error_count += 1
             except (ValueError, TypeError, AttributeError, ImportError, OSError):
                 logger.exception(f"Error processing file {file_path}")
+                return False
+
+        for file_path, modules in file_to_modules.items():
+            result = _safe_process_module_file(file_path, modules)
+            if result:
+                success_count += 1
+            else:
                 error_count += 1
 
         logger.info(

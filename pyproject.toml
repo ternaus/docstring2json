@@ -6,7 +6,7 @@ requires = [ "setuptools>=45", "wheel" ]
 [project]
 name = "google-docstring-2md"
 version = "0.0.2"
-description = "A tool to convert Google-style docstrings to markdown format"
+description = "A tool to convert Google-style docstrings to markdown and TSX formats"
 readme = "README.md"
 keywords = [
   "docstring",
@@ -14,9 +14,12 @@ keywords = [
   "docusaurus",
   "google-style",
   "markdown",
+  "nextjs",
   "parser",
   "python",
+  "react",
   "static-analysis",
+  "tsx",
   "type-hints",
 ]
 license = { text = "Custom License - See LICENSE file for details" }
@@ -55,13 +58,16 @@ optional-dependencies.dev = [
 ]
 urls."bug tracker" = "https://github.com/ternaus/google-docstring-2md/issues"
 urls.homepage = "https://github.com/ternaus/google-docstring-2md"
-scripts.docstring2md = "google_docstring_2md.__main__:main"
+scripts.docstring2md = "src.docstring_2md.__main__:main"
+scripts.docstring2tsx = "src.docstring_2tsx.__main__:main"
 
 [tool.setuptools]
-packages = [ "google_docstring_2md" ]
+package-dir = { "" = "src" }
+packages = [ "docstring_2md", "docstring_2tsx", "utils" ]
 
 [tool.setuptools.package-data]
-google_docstring_2md = [ "*.md" ]
+docstring_2md = [ "*.md" ]
+docstring_2tsx = [ "*.tsx" ]
 
 [tool.setuptools.exclude-package-data]
 "*" = [ "tests*" ]
@@ -151,7 +157,7 @@ no_implicit_reexport = true
 disallow_untyped_defs = true
 
 [tool.docstring_checker]
-paths = [ "google_docstring_2md" ]
+paths = [ "docstring_2md", "docstring_2tsx", "utils" ]
 require_param_types = true
 check_type_consistency = true
 verbose = false

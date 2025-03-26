@@ -10,7 +10,7 @@ import pkgutil
 import sys
 from pathlib import Path
 
-from google_docstring_2md.document_tree import package_to_markdown_structure
+from .document_tree import package_to_markdown_structure
 
 # Create a module logger
 logger = logging.getLogger(__name__)

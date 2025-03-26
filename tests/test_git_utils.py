@@ -2,7 +2,7 @@
 
 import pytest
 
-from google_docstring_2md.utils import clear_github_source_cache, _SOURCE_CODE_CACHE
+from src.utils.github_linker import clear_github_source_cache, _SOURCE_CODE_CACHE
 
 
 def test_clear_github_source_cache():
