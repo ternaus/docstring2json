@@ -119,30 +119,38 @@ def generate_documentation(
         output_dir.mkdir(exist_ok=True, parents=True)
 
         # Process all classes and functions in the package
-        for name, obj in pkgutil.iter_modules(package.__path__):
-            # Skip private members if exclude_private is True
-            if exclude_private and name.startswith("_"):
+        for module_info in pkgutil.iter_modules(package.__path__):
+            module_name = module_info.name
+            if exclude_private and module_name.startswith("_"):
                 continue
 
-            # Only consider classes and functions defined in this module
-            if (hasattr(obj, "__module__") and obj.__module__ == package.__name__) or (
-                inspect.isclass(obj) or inspect.isfunction(obj)
-            ):
-                try:
-                    tsx = class_to_tsx(obj, github_repo=github_repo, branch=branch)
-                    output_file = output_dir / f"{name}.tsx"
-                    output_file.write_text(tsx)
-                except (ValueError, TypeError, AttributeError):
-                    logger.exception("Error processing %s", name)
+            # Import the module
+            module = importlib.import_module(f"{package_name}.{module_name}")
 
-        logger.info(f"Documentation generated in {output_dir}")
+            # Process all classes and functions in the module
+            for name, obj in inspect.getmembers(module):
+                # Skip private members if exclude_private is True
+                if exclude_private and name.startswith("_"):
+                    continue
+
+                # Only consider classes and functions defined in this module
+                if (inspect.isclass(obj) or inspect.isfunction(obj)) and obj.__module__ == module.__name__:
+                    try:
+                        tsx = class_to_tsx(obj, github_repo=github_repo, branch=branch)
+                        output_file = output_dir / f"{name}.tsx"
+                        output_file.write_text(tsx)
+                        logger.info("Generated documentation for %s", name)
+                    except (ValueError, TypeError, AttributeError) as e:
+                        logger.warning("Error processing %s: %s", name, e)
+
+        logger.info("Documentation generated in %s", output_dir)
         return 0
 
     except ImportError:
-        logger.exception(f"Could not import package '{package_name}'")
+        logger.exception("Could not import package '%s'", package_name)
         return 1
     except (ValueError, TypeError, AttributeError):
-        logger.exception(f"Error processing package '{package_name}'")
+        logger.exception("Error processing package '%s'", package_name)
         return 1
 
 
