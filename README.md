@@ -1,4 +1,4 @@
-# A tool to convert Google-style docstrings to markdown format
+# A tool to convert Google-style docstrings to TSX format
 
 > [!IMPORTANT]
 > This package requires a PAID LICENSE for all users EXCEPT the Albumentations Team.
@@ -17,24 +17,24 @@ See the [LICENSE](LICENSE) file for complete details.
 ## Installation
 
 ```bash
-pip install google-docstring-2md
+pip install google-docstring-2tsx
 ```
 
 ## Usage
 
 ### Command-line Interface
 
-The simplest way to use google-docstring-2md is through the command-line interface:
+The simplest way to use google-docstring-2tsx is through the command-line interface:
 
 ```bash
-# Generate documentation for a package
-docstring2md albumentations -o ./albumentations_docs
+# Generate TSX documentation for a package
+docstring2tsx albumentations -o ./albumentations_docs
 
 # Exclude private classes and methods
-docstring2md pandas --exclude-private -o ./pandas_docs
+docstring2tsx pandas --exclude-private -o ./pandas_docs
 
 # Generate docs with GitHub source links
-docstring2md albumentations -o ./docusaurus-test/docs --github-repo https://github.com/albumentations-team/albumentations
+docstring2tsx albumentations -o ./docusaurus-test/docs --github-repo https://github.com/albumentations-team/albumentations
 ```
 
 ### Python API
@@ -43,47 +43,48 @@ You can also use the package programmatically:
 
 ```python
 from pathlib import Path
-from google_docstring_2md import class_to_markdown, file_to_markdown, package_to_markdown_structure
+from google_docstring_2tsx import class_to_tsx, file_to_tsx, package_to_tsx_structure
 
 # Document a single class
 from some_module import SomeClass
-markdown = class_to_markdown(SomeClass)
-print(markdown)
+tsx_content = class_to_tsx(SomeClass)
+print(tsx_content)
 
 # Document a module and save to a file
 import some_module
-markdown = file_to_markdown(some_module, "some_module")
-Path("some_module.md").write_text(markdown)
+tsx_content = file_to_tsx(some_module, "some_module")
+Path("some_module.page.tsx").write_text(tsx_content)
 
 # Document an entire package
 output_dir = Path("./docs")
-package_to_markdown_structure("numpy", output_dir, exclude_private=True)
+package_to_tsx_structure("numpy", output_dir, exclude_private=True)
 ```
 
 ### Output Directory Structure
 
-The output directory will have a structure that mirrors the package structure, but simplifies it:
+The output directory will have a structure that mirrors the package structure:
 
 ```
 output_dir/
-├── module1.md       # Contains all classes and functions from module1.py
-├── submodule/       # Folder from package.submodule
-│   ├── module2.md   # Contains all classes and functions from package.submodule.module2
+├── module1/
+│   └── page.tsx     # Contains docs for classes/functions from module1.py
+├── submodule/
+│   ├── module2/
+│   │   └── page.tsx # Contains docs for classes/functions from package.submodule.module2
 ```
 
-Each markdown file includes:
-1. A heading with the module name
-2. A table of contents
-3. Sections for classes and functions
-4. Code examples preserved from docstrings
+Each `page.tsx` file includes:
+1. Imports for necessary components (future)
+2. Structured data derived from docstrings
+3. JSX rendering components (future) for signature, descriptions, parameters, examples, etc.
 
 ## Features
 
-- Preserves package structure in generated documentation
-- Creates markdown files for each class
-- Formats docstring sections (Args, Returns, Examples, etc.)
+- Preserves package structure in generated documentation folders
+- Creates `page.tsx` files for each module, suitable for Next.js app router
+- Parses docstring sections (Args, Returns, Examples, etc.) into structured data
 - Properly formats code examples from docstrings
-- Generates parameter tables with types and descriptions
+- Generates parameter tables (via components, future)
 - Supports all Google-style docstring sections
 - Adds GitHub source links when a GitHub repository is specified
 
@@ -93,122 +94,16 @@ When generating documentation, you can provide a GitHub repository URL to add "V
 
 ```python
 # Add GitHub source links to the documentation
-package_to_markdown_structure("your_package", output_dir, github_repo="https://github.com/username/repository")
+package_to_tsx_structure("your_package", output_dir, github_repo="https://github.com/username/repository")
 ```
 
-### Styling GitHub Links in Docusaurus
+### Styling GitHub Links (Future - Component Based)
 
-The GitHub links are added with specific class names that can be styled in your Docusaurus project:
+Styling will be handled directly within the TSX components using standard React/Next.js styling methods (e.g., CSS Modules, Tailwind CSS).
 
-1. Add custom CSS to your Docusaurus site by creating or editing `src/css/custom.css`:
+## Example Output (Future - Component Based)
 
-```css
-/* GitHub source link styling */
-.github-source-container {
-  display: flex;
-  align-items: center;
-  background-color: #f6f8fa;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  padding: 8px 16px;
-  margin-bottom: 24px;
-  transition: background-color 0.2s;
-}
-
-.github-source-container:hover {
-  background-color: #ebedf0;
-}
-
-.github-icon {
-  display: flex;
-  margin-right: 8px;
-}
-
-.github-source-link {
-  color: #0366d6 !important;
-  font-weight: 500;
-  text-decoration: none;
-}
-
-.github-source-link:hover {
-  text-decoration: underline;
-}
-```
-
-2. Make sure your custom CSS is imported in your Docusaurus configuration:
-
-```js
-// docusaurus.config.js
-module.exports = {
-  // ...
-  presets: [
-    [
-      '@docusaurus/preset-classic',
-      {
-        // ...
-        theme: {
-          customCss: [require.resolve('./src/css/custom.css')],
-        },
-      },
-    ],
-  ],
-};
-```
-
-This will create visually distinct GitHub source links in your documentation.
-
-## Example Output
-
-For a class like:
-
-```python
-class ElasticTransform:
-    """Apply elastic deformation to images, masks, bounding boxes, and keypoints.
-
-    This transformation introduces random elastic distortions to the input data. It's particularly
-    useful for data augmentation in training deep learning models, especially for tasks like
-    image segmentation or object detection where you want to maintain the relative positions of
-    features while introducing realistic deformations.
-
-    Args:
-        alpha (float): Scaling factor for the random displacement fields. Higher values result in
-            more pronounced distortions. Default: 1.0
-        sigma (float): Standard deviation of the Gaussian filter used to smooth the displacement
-            fields. Higher values result in smoother, more global distortions. Default: 50.0
-
-    Example:
-        >>> import albumentations as A
-        >>> transform = A.ElasticTransform(alpha=1, sigma=50, p=0.5)
-    """
-```
-
-The generated markdown will look like:
-
-```markdown
-# ElasticTransform
-```python
-ElasticTransform(alpha=1.0, sigma=50.0, p=0.5)
-```
-
-Apply elastic deformation to images, masks, bounding boxes, and keypoints.
-
-This transformation introduces random elastic distortions to the input data. It's particularly
-useful for data augmentation in training deep learning models, especially for tasks like
-image segmentation or object detection where you want to maintain the relative positions of
-features while introducing realistic deformations.
-
-## Parameters
-| Name | Type | Description |
-|------|------|-------------|
-| alpha | float | Scaling factor for the random displacement fields. Higher values result in more pronounced distortions. Default: 1.0 |
-| sigma | float | Standard deviation of the Gaussian filter used to smooth the displacement fields. Higher values result in smoother, more global distortions. Default: 50.0 |
-
-## Example
-```python
-import albumentations as A
-transform = A.ElasticTransform(alpha=1, sigma=50, p=0.5)
-```
-```
+The generated `page.tsx` will import and use components to render the documentation based on parsed data.
 
 ## Requirements
 
