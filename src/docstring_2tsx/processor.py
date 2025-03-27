@@ -3,11 +3,14 @@
 This module provides functions for converting docstring sections into TSX components.
 """
 
+import logging
 import re
 from collections.abc import Callable
 
 from utils.reference_parser import format_references_section
 from utils.signature_formatter import Parameter
+
+logger = logging.getLogger(__name__)
 
 
 def escape_tsx_special_chars(text: str) -> str:
@@ -33,25 +36,19 @@ def escape_tsx_special_chars(text: str) -> str:
 
 
 def process_description(parsed: dict) -> str:
-    """Process description section from parsed docstring.
+    """Process the description section.
 
     Args:
-        parsed (dict): Parsed docstring dictionary
+        parsed: Parsed docstring dictionary
 
     Returns:
-        Formatted description as string
+        Processed description as TSX
     """
-    if "Description" not in parsed:
+    description = parsed.get("Description", "")
+    if not description:
         return ""
 
-    desc = parsed["Description"]
-    if not isinstance(desc, str):
-        desc = str(desc)
-
-    # Escape special characters in the description
-    desc = escape_tsx_special_chars(desc)
-
-    return f"<p>{desc}</p>"
+    return f"<p>{description}</p>"
 
 
 def extract_param_docs(param: Parameter, param_docs: dict, obj: type | Callable) -> tuple[str, str]:
@@ -81,74 +78,118 @@ def extract_param_docs(param: Parameter, param_docs: dict, obj: type | Callable)
     return doc_type, desc
 
 
-def build_tsx_params_table(params: list, parsed: dict) -> str:
-    """Build a parameters table for TSX.
+def build_tsx_params_table(params: list[Parameter], parsed: dict) -> list[str]:
+    """Build a TSX table for function parameters.
 
     Args:
-        params: List of parameters
-        parsed: Parsed docstring
+        params: List of Parameter objects
+        parsed: Parsed docstring dictionary
 
     Returns:
-        str: TSX formatted parameters table
+        List of TSX strings for the parameters table
     """
     if not params:
-        return ""
+        return []
 
-    sections = [
-        "<h2>Parameters</h2>",
-        "<table>",
-        "<thead>",
-        "<tr>",
-        "<th>Name</th>",
-        "<th>Type</th>",
-        "<th>Description</th>",
-        "</tr>",
-        "</thead>",
-        "<tbody>",
-    ]
+    param_docs = {param["name"]: param["description"] for param in parsed.get("Args", [])}
 
-    # Add each parameter
-    parsed_params = parsed.get("Args", [])
+    rows = []
     for param in params:
-        param_doc = next((p for p in parsed_params if p["name"] == param.name), None)
-        description = param_doc["description"] if param_doc else ""
-        sections.extend(
-            [
-                "<tr>",
-                f"<td><code>{param.name}</code></td>",
-                f"<td><code>{param.type}</code></td>",
-                f"<td>{escape_tsx_special_chars(description)}</td>",
-                "</tr>",
-            ],
+        type_str = param.type if param.type else ""
+        description = param_docs.get(param.name, "")
+        rows.append(
+            f"<tr><td>{param.name}</td><td>{type_str}</td><td>{description}</td></tr>",
         )
 
-    sections.extend(["</tbody>", "</table>"])
-    return "".join(sections)
+    return [
+        "<h3>Parameters</h3>",
+        "<table>",
+        "<thead><tr><th>Name</th><th>Type</th><th>Description</th></tr></thead>",
+        "<tbody>",
+        *rows,
+        "</tbody>",
+        "</table>",
+    ]
 
 
-def format_tsx_section(section: str, content: str) -> str:
-    """Format section content for TSX.
+def _format_returns_section(content: list | dict | str) -> str:
+    """Format the Returns section.
+
+    Args:
+        content: Section content
+
+    Returns:
+        Formatted TSX string
+    """
+    if isinstance(content, list):
+        return_info = content[0]
+    elif isinstance(content, dict):
+        return_info = content
+    else:
+        return f"<h3>Returns</h3><p>{content}</p>"
+
+    type_str = return_info.get("type", "") if isinstance(return_info, dict) else ""
+    desc = return_info.get("description", "") if isinstance(return_info, dict) else str(return_info)
+    if type_str and desc:
+        return f"<h3>Returns</h3><p><strong>{type_str}</strong>: {desc}</p>"
+    if desc:
+        return f"<h3>Returns</h3><p>{desc}</p>"
+    return ""
+
+
+def _format_raises_section(content: list | str) -> str:
+    """Format the Raises section.
+
+    Args:
+        content: Section content
+
+    Returns:
+        Formatted TSX string
+    """
+    raises_list = []
+    if isinstance(content, list):
+        for item in content:
+            if isinstance(item, dict):
+                type_str = item.get("type", "")
+                desc = item.get("description", "")
+            else:
+                type_str = ""
+                desc = str(item)
+            if type_str and desc:
+                raises_list.append(f"<li><strong>{type_str}</strong>: {desc}</li>")
+            elif desc:
+                raises_list.append(f"<li>{desc}</li>")
+    else:
+        raises_list.append(f"<li>{content}</li>")
+    if raises_list:
+        return f"<h3>Raises</h3><ul>{''.join(raises_list)}</ul>"
+    return ""
+
+
+def format_tsx_section(section: str, content: list | dict | str) -> str:
+    """Format a docstring section as TSX.
 
     Args:
         section: Section name
         content: Section content
 
     Returns:
-        str: Formatted TSX content
+        Formatted section as TSX
     """
+    if not content:
+        return ""
+
     section_formatters = {
-        "Returns": lambda c: f"<h3>Returns</h3><p>{c}</p>",
-        "Raises": lambda c: f"<h3>Raises</h3><p>{c}</p>",
-        "Example": lambda c: f"<h3>Example</h3><pre><code>{c}</code></pre>",
-        "Examples": lambda c: f"<h3>Examples</h3><pre><code>{c}</code></pre>",
-        "Note": lambda c: f"<div className='note'><h3>Note</h3><p>{c}</p></div>",
-        "Warning": lambda c: f"<div className='warning'><h3>Warning</h3><p>{c}</p></div>",
-        "References": lambda c: f"<h3>References</h3>{format_references_section(c)}",
+        "Returns": _format_returns_section,
+        "Raises": _format_raises_section,
+        "Example": lambda c: f"<h3>Example</h3><pre><code className='language-python'>{c}</code></pre>",
+        "References": lambda c: (
+            f"<h3>References</h3><ul>{format_references_section(c)}</ul>" if format_references_section(c) else ""
+        ),
     }
 
     formatter = section_formatters.get(section)
     if formatter:
         return formatter(content)
 
-    # Default case for unknown sections
     return f"<h3>{section}</h3><p>{content}</p>"

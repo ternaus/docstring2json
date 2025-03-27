@@ -192,3 +192,27 @@ def format_references(
     desc = process_text(ref["description"])
     source = process_text(ref["source"])
     return f"**{desc}**: {source}"
+
+
+def format_references_section(references: list[dict[str, str]]) -> str:
+    """Format references section.
+
+    Args:
+        references: List of reference dictionaries with 'description' and 'source' keys
+
+    Returns:
+        Formatted references section
+    """
+    if not references:
+        return ""
+
+    formatted_refs = []
+    for ref in references:
+        description = ref.get("description", "")
+        source = ref.get("source", "")
+        if description and source:
+            formatted_refs.append(f"- {description}: {source}")
+        elif source:
+            formatted_refs.append(f"- {source}")
+
+    return "\n".join(formatted_refs)

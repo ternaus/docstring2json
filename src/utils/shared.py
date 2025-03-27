@@ -13,10 +13,30 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from google_docstring_2md.converter import GitHubConfig
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_anchor_id(module_name: str, name: str) -> str:
+    """Normalize a name for use as an HTML anchor ID.
+
+    Args:
+        module_name: Module name
+        name: Name to normalize
+
+    Returns:
+        Normalized name suitable for use as an HTML anchor ID
+    """
+    return f"{module_name.replace('.', '-')}-{name}".lower()
+
+
+@dataclass
+class GitHubConfig:
+    """Configuration for GitHub repository links."""
+
+    github_repo: str | None
+    branch: str
 
 
 @dataclass

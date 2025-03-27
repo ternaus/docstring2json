@@ -69,7 +69,6 @@ def class_to_tsx(obj: type | Callable, github_repo: str | None = None, branch: s
     # Add the object name and signature
     sections.extend(
         [
-            f"<h1>{obj_name}</h1>",
             f"<pre><code className='language-python'>{signature}</code></pre>",
         ],
     )
@@ -112,7 +111,7 @@ def class_to_tsx(obj: type | Callable, github_repo: str | None = None, branch: s
 
     # Add parameters table if we have parameters
     if params:
-        param_table = build_tsx_params_table(params, parsed, obj)
+        param_table = build_tsx_params_table(params, parsed)
         sections.extend(param_table)
 
     # Add other sections (returns, raises, etc.)
