@@ -194,25 +194,31 @@ def format_references(
     return f"**{desc}**: {source}"
 
 
-def format_references_section(references: list[dict[str, str]]) -> str:
+def format_references_section(content: list | str) -> str:
     """Format references section.
 
     Args:
-        references: List of reference dictionaries with 'description' and 'source' keys
+        content: List of references or single reference string
 
     Returns:
-        Formatted references section
+        Formatted references as HTML list items
     """
-    if not references:
+    if not content:
         return ""
 
-    formatted_refs = []
-    for ref in references:
-        description = ref.get("description", "")
-        source = ref.get("source", "")
-        if description and source:
-            formatted_refs.append(f"- {description}: {source}")
-        elif source:
-            formatted_refs.append(f"- {source}")
+    if isinstance(content, str):
+        return f"<li>{content}</li>"
 
-    return "\n".join(formatted_refs)
+    references = []
+    for ref in content:
+        if isinstance(ref, dict):
+            description = ref.get("description", "")
+            source = ref.get("source", "")
+            if description and source:
+                references.append(f"<li><strong>{description}</strong>: {source}</li>")
+            elif source:
+                references.append(f"<li>{source}</li>")
+        else:
+            references.append(f"<li>{ref}</li>")
+
+    return "".join(references)

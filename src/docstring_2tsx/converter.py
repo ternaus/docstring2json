@@ -57,8 +57,6 @@ def class_to_tsx(obj: type | Callable, github_repo: str | None = None, branch: s
     Returns:
         TSX component as string
     """
-    sections = []
-
     # Get object name and parameters
     obj_name = obj.__name__
     params = get_signature_params(obj)
@@ -66,14 +64,8 @@ def class_to_tsx(obj: type | Callable, github_repo: str | None = None, branch: s
     # Format and add the signature
     signature = format_signature(obj, params)
 
-    # Add the object name and signature
-    sections.extend(
-        [
-            f"<pre><code className='language-python'>{signature}</code></pre>",
-        ],
-    )
-
     # Add GitHub link if github_repo is provided
+    github_section = ""
     if github_repo:
         source_line = get_source_line(obj)
         # GitHub icon SVG path split into smaller chunks
@@ -93,11 +85,11 @@ def class_to_tsx(obj: type | Callable, github_repo: str | None = None, branch: s
             f'<a href="{github_repo}/blob/{branch}/{obj.__module__.replace(".", "/")}.py#L{source_line}" '
             'className="github-source-link">View source on GitHub</a>'
         )
-        sections.append(
+        github_section = (
             f'<div className="github-source-container">'
             f'<span className="github-icon">{github_icon}</span>'
             f"{github_link}"
-            f"</div>",
+            f"</div>"
         )
 
     # Parse docstring
@@ -106,30 +98,43 @@ def class_to_tsx(obj: type | Callable, github_repo: str | None = None, branch: s
 
     # Add description
     description = process_description(parsed)
-    if description:
-        sections.append(description)
 
     # Add parameters table if we have parameters
+    param_section = ""
     if params:
         param_table = build_tsx_params_table(params, parsed)
-        sections.extend(param_table)
+        param_section = "\n".join(param_table)
 
     # Add other sections (returns, raises, etc.)
+    other_sections = []
     for section, content in parsed.items():
         if section not in ["Description", "Args"]:
-            sections.append(format_tsx_section(section, content))
+            section_content = format_tsx_section(section, content)
+            if section_content:
+                other_sections.append(section_content)
 
-    # Wrap everything in a TSX component
-    return f"""import React from 'react';
+    # Join sections with newlines
+    sections_str = "\n".join(
+        [
+            f'<pre><code className="language-python">{signature}</code></pre>',
+            github_section,
+            description,
+            param_section,
+            *other_sections,
+        ],
+    )
 
-export default function {obj_name}() {{
-  return (
-    <div className="docstring-content">
-      {" ".join(sections)}
-    </div>
-  );
-}}
-"""
+    # Create the component
+    return (
+        "import React from 'react';\n\n"
+        f"export default function {obj_name}() {{\n"
+        "  return (\n"
+        '    <div className="docstring-content">\n'
+        f"      {sections_str}\n"
+        "    </div>\n"
+        "  );\n"
+        "}\n"
+    )
 
 
 def file_to_tsx(module: object, module_name: str, *, github_repo: str | None = None, branch: str = "main") -> str:
@@ -150,25 +155,36 @@ def file_to_tsx(module: object, module_name: str, *, github_repo: str | None = N
     # Normalize the module_name for the anchor
     module_anchor = module_name.replace(".", "-")
 
-    content = [
-        f"<h1>{module_name}</h1>",
-        f'<a id="{module_anchor}"></a>',
-    ]
-
     # Process classes and functions
+    member_components = []
     for name, obj in sorted(classes + functions):
         # Add anchor for the item
         anchor_id = normalize_anchor_id(module_name, name)
-        content.append(f'<a id="{anchor_id}"></a>')
+        member_components.append(f'<a id="{anchor_id}"></a>')
 
-        # Convert to TSX
+        # Convert to TSX and extract the component content
         tsx = class_to_tsx(obj, github_repo=github_repo, branch=branch)
+        component_content = tsx.split("return (")[1].split(");")[0].strip()
+        member_components.append(component_content)
 
-        # Extract the content from the TSX component
-        tsx_content = tsx.split("return (")[1].split(");")[0].strip()
-        content.append(tsx_content)
+    # Join member components with newlines
+    members_str = "\n".join(member_components)
 
-    return "\n".join(content)
+    # Create the module component
+    return (
+        "import React from 'react';\n\n"
+        f"export default function {module_name.replace('.', '_')}() {{\n"
+        "  return (\n"
+        "    <>\n"
+        '      <div className="module-content">\n'
+        f"        <h1>{module_name}</h1>\n"
+        f'        <a id="{module_anchor}"></a>\n'
+        f"        {members_str}\n"
+        "      </div>\n"
+        "    </>\n"
+        "  );\n"
+        "}\n"
+    )
 
 
 def module_to_tsx_files(
