@@ -187,33 +187,6 @@ def file_to_tsx(module: object, module_name: str, *, github_repo: str | None = N
     )
 
 
-def module_to_tsx_files(
-    module: object,
-    output_dir: Path,
-    *,
-    github_repo: str | None = None,
-    branch: str = "main",
-) -> None:
-    """Convert a module to TSX files.
-
-    Args:
-        module: Python module to convert
-        output_dir: Directory to write TSX files
-        github_repo: Base URL of the GitHub repository
-        branch: Branch name for GitHub links
-    """
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Collect classes and functions
-    classes, functions = collect_module_members(module)
-
-    # Convert each class and function
-    for name, obj in classes + functions:
-        content = class_to_tsx(obj, github_repo=github_repo, branch=branch)
-        output_file = output_dir / f"{name}.tsx"
-        output_file.write_text(content)
-
-
 def package_to_tsx_files(
     package: object,
     output_dir: Path,
@@ -255,8 +228,13 @@ def package_to_tsx_files(
                 converter_func=file_to_tsx,
             )
 
-            # Write the content to a file
-            output_file = output_dir / f"{module_name.replace('.', '_')}.tsx"
+            # Create the Next.js page structure
+            # Convert module name to path (e.g., "package.module.submodule" -> "package/module/submodule")
+            page_path = output_dir / module_name.replace(".", "/")
+            page_path.mkdir(parents=True, exist_ok=True)
+
+            # Write the content to page.tsx
+            output_file = page_path / "page.tsx"
             output_file.write_text(content)
         except Exception:
             logger.exception("Error processing file %s", file_path)

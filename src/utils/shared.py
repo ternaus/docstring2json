@@ -272,8 +272,12 @@ def process_module_file(config: ModuleFileConfig) -> bool:
                 branch=config.github_config.branch if config.github_config else "main",
             )
 
+            # Create the Next.js page structure
+            page_path = module_dir / file_name
+            page_path.mkdir(exist_ok=True, parents=True)
+
             # Write to file with specified extension
-            output_file = module_dir / f"{file_name}{config.output_extension}"
+            output_file = page_path / f"page{config.output_extension}"
             logger.debug(f"Writing to file: {output_file}")
             output_file.write_text(content)
             return True
