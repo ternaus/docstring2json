@@ -73,8 +73,8 @@ def generate_documentation(config: DocumentationConfig) -> None:
 def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Generate documentation from docstrings")
-    parser.add_argument("package_name", help="Name of the package to document")
-    parser.add_argument("output_dir", help="Directory to write documentation to")
+    parser.add_argument("--package-name", required=True, help="Name of the package to document")
+    parser.add_argument("--output-dir", required=True, help="Directory to write documentation to")
     parser.add_argument(
         "--format",
         type=FileFormat,
