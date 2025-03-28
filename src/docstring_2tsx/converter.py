@@ -140,7 +140,6 @@ def file_to_tsx(module: object, module_name: str, *, github_repo: str | None = N
     }
 
     # JSON representation of the data (with indentation for readability)
-    # We'll use JSON.stringify in the TSX template
     module_data_str = json.dumps(module_data, indent=2)
 
     # Create the page.tsx file content

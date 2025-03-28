@@ -1,4 +1,4 @@
-"""Main entry point for docstring converters."""
+"""Main entry point for TSX docstring converter."""
 
 import argparse
 import logging
@@ -47,7 +47,7 @@ def generate_documentation(config: DocumentationConfig) -> None:
 
 def main() -> None:
     """Main entry point."""
-    parser = argparse.ArgumentParser(description="Generate documentation from docstrings")
+    parser = argparse.ArgumentParser(description="Generate TSX documentation from docstrings")
     parser.add_argument("--package-name", required=True, help="Name of the package to document")
     parser.add_argument("--output-dir", required=True, help="Directory to write documentation to")
     parser.add_argument("--exclude-private", action="store_true", help="Exclude private classes and methods")

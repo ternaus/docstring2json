@@ -4,16 +4,14 @@ build-backend = "setuptools.build_meta"
 requires = [ "setuptools>=45", "wheel" ]
 
 [project]
-name = "google-docstring-2md"
+name = "google-docstring-2tsx"
 version = "0.0.2"
-description = "A tool to convert Google-style docstrings to markdown and TSX formats"
+description = "A tool to convert Google-style docstrings to TSX format for Next.js documentation"
 readme = "README.md"
 keywords = [
   "docstring",
   "documentation",
-  "docusaurus",
   "google-style",
-  "markdown",
   "nextjs",
   "parser",
   "python",
@@ -56,18 +54,16 @@ optional-dependencies.dev = [
   "pre-commit>=3.5",
   "pytest>=8.3.3",
 ]
-urls."bug tracker" = "https://github.com/ternaus/google-docstring-2md/issues"
-urls.homepage = "https://github.com/ternaus/google-docstring-2md"
-scripts.docstring2md = "src.docstring_2md.__main__:main"
-scripts.docstring2tsx = "src.docstring_2tsx.__main__:main"
+urls."bug tracker" = "https://github.com/ternaus/google-docstring-2tsx/issues"
+urls.homepage = "https://github.com/ternaus/google-docstring-2tsx"
+scripts.docstring2tsx = "src.__main__:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
-packages = [ "docstring_2md", "docstring_2tsx", "utils" ]
+packages = [ "docstring_2tsx", "utils" ]
 
 [tool.setuptools.package-data]
-docstring_2md = [ "*.md" ]
-docstring_2tsx = [ "*.tsx" ]
+docstring_2tsx = [ "*.tsx", "templates/*.md", "templates/components/*.tsx.example" ]
 
 [tool.setuptools.exclude-package-data]
 "*" = [ "tests*" ]
@@ -158,7 +154,7 @@ no_implicit_reexport = true
 disallow_untyped_defs = true
 
 [tool.docstring_checker]
-paths = [ "docstring_2md", "docstring_2tsx", "utils" ]
+paths = [ "docstring_2tsx", "utils" ]
 require_param_types = true
 check_type_consistency = true
 verbose = false
