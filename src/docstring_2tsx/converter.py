@@ -1,9 +1,10 @@
 """Utilities for converting Google-style docstrings to TSX.
 
 This module provides functions to convert Python classes and functions with Google-style
-docstrings into TSX documentation components.
+docstrings into TSX documentation components that use imported React components.
 """
 
+import json
 import logging
 from collections.abc import Callable
 from pathlib import Path
@@ -11,8 +12,8 @@ from pathlib import Path
 from google_docstring_parser import parse_google_docstring
 
 from docstring_2tsx.processor import (
-    build_tsx_params_table,
-    format_tsx_section,
+    build_params_data,
+    format_section_data,
     process_description,
 )
 from utils.shared import (
@@ -20,12 +21,14 @@ from utils.shared import (
     collect_package_modules,
     group_modules_by_file,
     has_documentable_members,
-    normalize_anchor_id,
     process_module_file,
 )
 from utils.signature_formatter import format_signature, get_signature_params
 
 logger = logging.getLogger(__name__)
+
+# Path to import components from, could be made configurable
+COMPONENTS_IMPORT_PATH = "@/components/docs"
 
 
 def get_source_line(obj: type | Callable) -> int:
@@ -43,11 +46,11 @@ def get_source_line(obj: type | Callable) -> int:
         return 1
 
 
-def class_to_tsx(obj: type | Callable, github_repo: str | None = None, branch: str = "main") -> str:
-    """Convert class or function to TSX component.
+def class_to_data(obj: type | Callable, github_repo: str | None = None, branch: str = "main") -> dict:
+    """Convert class or function to structured data format.
 
-    This function generates TSX documentation component for a class or function,
-    extracting information from its docstring and signature.
+    This function extracts documentation data for a class or function from
+    its docstring and signature, returning a structured dictionary.
 
     Args:
         obj: Class or function to document
@@ -55,90 +58,61 @@ def class_to_tsx(obj: type | Callable, github_repo: str | None = None, branch: s
         branch: Branch name for GitHub links (default: "main")
 
     Returns:
-        TSX component as string
+        Dictionary containing structured documentation data
     """
     # Get object name and parameters
     obj_name = obj.__name__
     params = get_signature_params(obj)
 
-    # Format and add the signature
+    # Format signature
     signature = format_signature(obj, params)
 
-    # Add GitHub link if github_repo is provided
-    github_section = ""
+    # Prepare GitHub link if github_repo is provided
+    github_url = None
     if github_repo:
         source_line = get_source_line(obj)
-        # GitHub icon SVG path split into smaller chunks
-        svg_path = (
-            "M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-"
-            "2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87"
-            ".87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-"
-            "2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1."
-            "92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2"
-            " 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
-        )
-        github_icon = (
-            f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" '
-            f'fill="currentColor"><path d="{svg_path}"/></svg>'
-        )
-        github_link = (
-            f'<a href="{github_repo}/blob/{branch}/{obj.__module__.replace(".", "/")}.py#L{source_line}" '
-            'className="github-source-link">View source on GitHub</a>'
-        )
-        github_section = (
-            f'<div className="github-source-container">'
-            f'<span className="github-icon">{github_icon}</span>'
-            f"{github_link}"
-            f"</div>"
-        )
+        github_url = f"{github_repo}/blob/{branch}/{obj.__module__.replace('.', '/')}.py#L{source_line}"
 
     # Parse docstring
     docstring = obj.__doc__ or ""
     parsed = parse_google_docstring(docstring)
 
-    # Add description
+    # Get description
     description = process_description(parsed)
 
-    # Add parameters table if we have parameters
-    param_section = ""
-    if params:
-        param_table = build_tsx_params_table(params, parsed)
-        param_section = "\n".join(param_table)
+    # Get parameters data
+    params_data = build_params_data(params, parsed)
 
-    # Add other sections (returns, raises, etc.)
-    other_sections = []
+    # Process other sections (returns, raises, etc.)
+    sections = []
     for section, content in parsed.items():
         if section not in ["Description", "Args"]:
-            section_content = format_tsx_section(section, content)
-            if section_content:
-                other_sections.append(section_content)
+            section_data = format_section_data(section, content)
+            if section_data:
+                sections.append(section_data)
 
-    # Join sections with newlines
-    sections_str = "\n".join(
-        [
-            f'<pre><code className="language-python">{signature}</code></pre>',
-            github_section,
-            description,
-            param_section,
-            *other_sections,
-        ],
-    )
+    # Create the data structure
+    member_data = {
+        "name": obj_name,
+        "type": "class" if isinstance(obj, type) else "function",
+        "signature": signature,
+    }
 
-    # Create the component
-    return (
-        "import React from 'react';\n\n"
-        f"export default function {obj_name}() {{\n"
-        "  return (\n"
-        '    <div className="docstring-content">\n'
-        f"      {sections_str}\n"
-        "    </div>\n"
-        "  );\n"
-        "}\n"
-    )
+    # Add optional fields
+    if description:
+        member_data["description"] = description
+    if params_data:
+        member_data["params"] = params_data
+    if github_url:
+        member_data["githubUrl"] = github_url
+    if sections:
+        member_data["sections"] = sections
+
+    return member_data
 
 
 def file_to_tsx(module: object, module_name: str, *, github_repo: str | None = None, branch: str = "main") -> str:
-    """Convert a module to a single TSX document.
+    """Convert a module to a TSX document that uses imported components.
 
     Args:
         module: The module object to document
@@ -152,37 +126,31 @@ def file_to_tsx(module: object, module_name: str, *, github_repo: str | None = N
     # Collect module members
     classes, functions = collect_module_members(module)
 
-    # Normalize the module_name for the anchor
-    module_anchor = module_name.replace(".", "-")
+    # Process classes and functions to get their data
+    members_data = []
+    for _name, obj in sorted(classes + functions):
+        # Convert to data structure
+        member_data = class_to_data(obj, github_repo=github_repo, branch=branch)
+        members_data.append(member_data)
 
-    # Process classes and functions
-    member_components = []
-    for name, obj in sorted(classes + functions):
-        # Add anchor for the item
-        anchor_id = normalize_anchor_id(module_name, name)
-        member_components.append(f'<a id="{anchor_id}"></a>')
+    # Create module data
+    module_data = {
+        "moduleName": module_name,
+        "members": members_data,
+    }
 
-        # Convert to TSX and extract the component content
-        tsx = class_to_tsx(obj, github_repo=github_repo, branch=branch)
-        component_content = tsx.split("return (")[1].split(");")[0].strip()
-        member_components.append(component_content)
+    # JSON representation of the data (with indentation for readability)
+    # We'll use JSON.stringify in the TSX template
+    module_data_str = json.dumps(module_data, indent=2)
 
-    # Join member components with newlines
-    members_str = "\n".join(member_components)
-
-    # Create the module component
+    # Create the page.tsx file content
+    components = "ModuleDoc, MemberDoc, Signature, Description, ParamsTable, GitHubLink, Section"
     return (
-        "import React from 'react';\n\n"
-        f"export default function {module_name.replace('.', '_')}() {{\n"
-        "  return (\n"
-        "    <>\n"
-        '      <div className="module-content">\n'
-        f"        <h1>{module_name}</h1>\n"
-        f'        <a id="{module_anchor}"></a>\n'
-        f"        {members_str}\n"
-        "      </div>\n"
-        "    </>\n"
-        "  );\n"
+        f"import {{ {components} }} from '{COMPONENTS_IMPORT_PATH}';\n\n"
+        "// Data structure extracted from Python docstrings\n"
+        f"const moduleData = {module_data_str};\n\n"
+        "export default function Page() {\n"
+        "  return <ModuleDoc {...moduleData} />;\n"
         "}\n"
     )
 
