@@ -28,7 +28,7 @@ from utils.signature_formatter import format_signature, get_signature_params
 logger = logging.getLogger(__name__)
 
 # Path to import components from, could be made configurable
-COMPONENTS_IMPORT_PATH = "@/components/docs"
+COMPONENTS_IMPORT_PATH = "@/components/DocComponents"
 
 
 def get_source_line(obj: type | Callable) -> int:
