@@ -199,7 +199,7 @@ def test_tsx_content_generation(monkeypatch):
     result = file_to_tsx(None, "test_module")
 
     # Check that the result contains what we expect
-    assert f"import {{ ModuleDoc, MemberDoc" in result
+    assert f"import {{ ModuleDoc" in result
     assert f"}} from '{COMPONENTS_IMPORT_PATH}';" in result
     assert "const moduleData =" in result
     assert "export default function Page()" in result

@@ -159,7 +159,7 @@ def file_to_tsx(module: object, module_name: str) -> str:
     module_data_str = json.dumps(module_data, indent=2)
 
     # Create the page.tsx file content
-    components = "ModuleDoc, MemberDoc, Signature, Description, ParamsTable, Section"
+    components = "ModuleDoc"
     return (
         f"import {{ {components} }} from '{COMPONENTS_IMPORT_PATH}';\n\n"
         "// Data structure extracted from Python docstrings\n"
