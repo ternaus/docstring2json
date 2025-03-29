@@ -47,8 +47,12 @@ def main() -> None:
     parser.add_argument("--package-name", required=True, help="Name of the package to document")
     parser.add_argument("--output-dir", required=True, help="Directory to write documentation to")
     parser.add_argument("--exclude-private", action="store_true", help="Exclude private classes and methods")
+    parser.add_argument("--log-level", default="INFO", help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
 
     args = parser.parse_args()
+
+    # Set up logging
+    logging.basicConfig(level=getattr(logging, args.log_level.upper()))
 
     config = DocumentationConfig(
         package_name=args.package_name,

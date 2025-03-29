@@ -6,7 +6,6 @@ that can be used with TSX components.
 
 import logging
 
-from utils.reference_parser import parse_references
 from utils.signature_formatter import Parameter
 
 logger = logging.getLogger(__name__)
@@ -118,22 +117,13 @@ def format_section_data(section: str, content: list | dict | str) -> dict | None
     if not content:
         return None
 
-    # Helper function to handle references parsing conditionally
-    def process_references(c: str | list) -> list[dict] | list:
-        logger.debug(f"Processing references section with content: {c}")
-        if isinstance(c, str):
-            logger.debug(f"Processing string reference: {c}")
-            return parse_references(c)
-        logger.debug(f"Processing list reference: {c}")
-        return c
-
     section_formatters = {
         "Returns": lambda c: {"title": "Returns", "content": _format_returns_data(c), "contentType": "data"},
         "Raises": lambda c: {"title": "Raises", "content": _format_raises_data(c), "contentType": "data"},
         "Example": lambda c: {"title": "Example", "content": c, "contentType": "code"},
         "References": lambda c: {
             "title": "References",
-            "content": process_references(c),
+            "content": c,  # google_docstring_parser already gives us the correct format
             "contentType": "reference",
         },
     }

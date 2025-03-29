@@ -151,6 +151,10 @@ def has_documentable_members(
     Returns:
         bool: True if the module has documentable members
     """
+    # Skip __init__.py files
+    if hasattr(module, "__file__") and module.__file__ and module.__file__.endswith("__init__.py"):
+        return False
+
     for name, obj in inspect.getmembers(module):
         if exclude_private and name.startswith("_"):
             continue
@@ -208,22 +212,16 @@ def process_module_file(config: ModuleFileConfig) -> bool:
 
         logger.debug(f"Processing {config.file_path}, stem: {file_name}")
 
-        # Skip __init__ files with no content
-        if file_name == "__init__" and not has_documentable_members(
-            config.modules[0][0],
-            exclude_private=config.exclude_private,
-        ):
-            logger.debug(f"Skipping empty __init__ file: {config.file_path}")
+        # Skip all __init__ files
+        if file_name == "__init__":
             return False
 
         # Determine the module path for directory structure
         # Use the module with the shortest name to determine the path
         module, module_name = min(config.modules, key=lambda x: len(x[1]))
-        logger.debug(f"Using module {module_name} for path structure")
 
         # Split the module name to get the path components
         parts = module_name.split(".")
-        logger.debug(f"Module path parts: {parts}")
 
         # Extract the path components excluding the root package and current module name
         # First component is the package name, last component is often the module name
@@ -246,7 +244,6 @@ def process_module_file(config: ModuleFileConfig) -> bool:
 
         # Create the output directory
         output_dir.mkdir(parents=True, exist_ok=True)
-        logger.debug(f"Created output directory: {output_dir}")
 
         # Convert the module to documentation
         content = config.converter_func(module, module_name)
@@ -254,11 +251,10 @@ def process_module_file(config: ModuleFileConfig) -> bool:
         # Write the content to a file
         output_file = output_dir / f"page{config.output_extension}"
         output_file.write_text(content)
-        logger.debug(f"Wrote documentation to {output_file}")
 
         return True
-    except Exception:
-        logger.exception("Error processing file %s", config.file_path)
+    except (ImportError, AttributeError, OSError, ValueError):
+        logger.exception(f"Failed to process module file {config.file_path}")
         return False
 
 

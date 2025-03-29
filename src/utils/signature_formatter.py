@@ -67,7 +67,14 @@ def _get_param_default(param: inspect.Parameter) -> str | None:
     Returns:
         Default value formatted as string or None if no default
     """
-    return param.default if param.default is not inspect.Signature.empty else None
+    if param.default is inspect.Signature.empty:
+        return None
+
+    # Handle function defaults
+    if callable(param.default):
+        return f"<function {param.default.__name__}>"
+
+    return str(param.default)
 
 
 def _process_signature_params(signature: inspect.Signature, *, skip_self: bool = False) -> list[Parameter]:
@@ -104,6 +111,10 @@ def get_signature_params(obj: type | Callable) -> list[Parameter]:
     try:
         if isinstance(obj, type):
             # For classes, try to get __init__ signature
+            # Skip if it's an __init__.py file (module)
+            if obj.__name__ == "__init__":
+                return []
+
             try:
                 signature = inspect.signature(obj.__init__)
                 return _process_signature_params(signature, skip_self=True)
