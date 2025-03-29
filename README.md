@@ -1,4 +1,4 @@
-# Google Docstring to TSX/MDX Converter
+# Google Docstring to TSX Converter
 
 A tool that converts Python package docstrings to TSX files for Next.js documentation, with a focus on generating beautiful, interactive documentation.
 
@@ -74,7 +74,7 @@ Each `page.tsx` file contains:
 
 ```bash
 # Install dependencies
-pip install -e ".[dev]"
+pip install -e .
 
 # Run tests
 pytest
