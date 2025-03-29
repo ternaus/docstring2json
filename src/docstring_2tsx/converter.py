@@ -106,10 +106,8 @@ def class_to_data(obj: type | Callable) -> dict:
     # Process other sections (returns, raises, etc.)
     sections = []
     for section, content in parsed.items():
-        if section not in ["Description", "Args"]:
-            section_data = format_section_data(section, content)
-            if section_data:
-                sections.append(section_data)
+        if section not in ["Description", "Args"] and (section_data := format_section_data(section, content)):
+            sections.append(section_data)
 
     # Create the data structure
     member_data = {

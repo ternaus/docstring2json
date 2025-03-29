@@ -12,9 +12,7 @@ def process_description(parsed: dict[str, Any]) -> str:
     Returns:
         TSX formatted description
     """
-    if not parsed.get("description"):
-        return ""
-    return f"<p>{parsed['description']}</p>"
+    return f"<p>{parsed['description']}</p>" if parsed.get("description") else ""
 
 
 def build_params_table(params: list[str], parsed: dict[str, Any]) -> list[str]:

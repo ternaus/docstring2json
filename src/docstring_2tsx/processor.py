@@ -21,10 +21,7 @@ def process_description(parsed: dict) -> str | None:
         Processed description or None if not available
     """
     description = parsed.get("Description", "")
-    if not description:
-        return None
-
-    return description
+    return description if description else None
 
 
 def build_params_data(params: list[Parameter], parsed: dict) -> list[dict] | None:
@@ -40,9 +37,7 @@ def build_params_data(params: list[Parameter], parsed: dict) -> list[dict] | Non
     if not params:
         return None
 
-    param_docs = {}
-    for param_entry in parsed.get("Args", []):
-        param_docs[param_entry["name"]] = param_entry
+    param_docs = {param_entry["name"]: param_entry for param_entry in parsed.get("Args", [])}
 
     result = []
     for param in params:
@@ -101,7 +96,7 @@ def _format_raises_data(content: list | str) -> list[dict] | None:
     else:
         raises_list.append({"type": "", "description": str(content)})
 
-    return raises_list if raises_list else None
+    return raises_list or None
 
 
 def format_section_data(section: str, content: list | dict | str) -> dict | None:
@@ -128,8 +123,7 @@ def format_section_data(section: str, content: list | dict | str) -> dict | None
         },
     }
 
-    formatter = section_formatters.get(section)
-    if formatter:
+    if formatter := section_formatters.get(section):
         logger.debug(f"Using formatter for section {section} with content: {content}")
         return formatter(content)
 

@@ -188,57 +188,47 @@ def collect_module_members(module: object) -> tuple[list[tuple[str, object]], li
     return classes, functions
 
 
-def process_module_file(config: ModuleFileConfig) -> bool:
-    """Process a module file and generate documentation.
+def build_output_dir(config: ModuleFileConfig, module_name: str, file_name: str) -> Path:
+    """Build the output directory path for a module file.
 
     Args:
-        config: Configuration for processing the module file
+        config: Configuration for module file processing
+        module_name: Full module name (e.g., 'package.module.submodule')
+        file_name: Name of the file without extension
+
+    Returns:
+        Path to the output directory
+    """
+    parts = module_name.split(".")
+    if len(parts) > 1:
+        simplified_path = parts[1:]
+        if simplified_path and simplified_path[-1] == file_name:
+            simplified_path = simplified_path[:-1]
+        simplified_path = [part for part in simplified_path if part != "__init__"]
+        return config.output_dir / "/".join(simplified_path) / file_name
+    return config.output_dir / file_name
+
+
+def process_module_file(config: ModuleFileConfig) -> bool:
+    """Process a single module file and generate documentation.
+
+    Args:
+        config: Configuration for module file processing
 
     Returns:
         bool: True if processing was successful, False otherwise
     """
     try:
-        # Get the file name without extension
         path_obj = Path(config.file_path)
         file_name = path_obj.stem
-
-        # Skip all __init__ files
         if file_name == "__init__":
             return False
 
-        # Determine the module path for directory structure
-        # Use the module with the shortest name to determine the path
         module, module_name = min(config.modules, key=lambda x: len(x[1]))
-
-        # Split the module name to get the path components
-        parts = module_name.split(".")
-
-        # Extract the path components excluding the root package and current module name
-        # First component is the package name, last component is often the module name
-        if len(parts) > 1:
-            # Extract everything except the first component (root package)
-            simplified_path = parts[1:]
-
-            # If the last component matches the file_name, remove it
-            if simplified_path and simplified_path[-1] == file_name:
-                simplified_path = simplified_path[:-1]
-
-            # Also remove any __init__ components
-            simplified_path = [part for part in simplified_path if part != "__init__"]
-
-            # Create the output directory path
-            output_dir = config.output_dir / "/".join(simplified_path) / file_name
-        else:
-            # For root modules, use the output directory directly
-            output_dir = config.output_dir / file_name
-
-        # Create the output directory
+        output_dir = build_output_dir(config, module_name, file_name)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Convert the module to documentation
         content = config.converter_func(module, module_name)
-
-        # Write the content to a file
         output_file = output_dir / f"page{config.output_extension}"
         output_file.write_text(content)
 
