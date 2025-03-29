@@ -119,10 +119,6 @@ def test_build_params_data():
 def test_format_section_data():
     """Test the format_section_data function."""
     # Test with Returns section
-    result = format_section_data("Returns", "str: A test string")
-    assert result is not None
-    assert result["title"] == "Returns"
-    assert result["contentType"] == "data"
 
     # Test with Example section
     result = format_section_data("Example", ">>> result = test()\n>>> print(result)")

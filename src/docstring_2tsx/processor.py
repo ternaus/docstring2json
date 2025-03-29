@@ -6,6 +6,7 @@ that can be used with TSX components.
 
 import logging
 
+from utils.reference_parser import parse_references
 from utils.signature_formatter import Parameter
 
 logger = logging.getLogger(__name__)
@@ -56,31 +57,22 @@ def build_params_data(params: list[Parameter], parsed: dict) -> list[dict] | Non
     return result
 
 
-def _format_returns_data(content: list | dict | str | None) -> dict | None:
+def _format_returns_data(content: dict | None) -> dict | None:
     """Format the Returns section as data.
 
     Args:
-        content: Section content
+        content: Section content from google_docstring_parser
 
     Returns:
-        Dictionary with return type and description
+        Dictionary with return type and description or None if no content
     """
     if not content:
         return None
 
-    if isinstance(content, list) and len(content) > 0:
-        return_info = content[0]
-    elif isinstance(content, dict):
-        return_info = content
-    else:
-        return {"type": None, "description": str(content)}
-
-    if isinstance(return_info, dict):
-        return {
-            "type": return_info.get("type", None),
-            "description": return_info.get("description", ""),
-        }
-    return {"type": None, "description": str(return_info)}
+    return {
+        "type": content.get("type"),
+        "description": content.get("description", ""),
+    }
 
 
 def _format_raises_data(content: list | str) -> list[dict] | None:
@@ -126,13 +118,22 @@ def format_section_data(section: str, content: list | dict | str) -> dict | None
     if not content:
         return None
 
+    # Helper function to handle references parsing conditionally
+    def process_references(c: str | list) -> list[dict] | list:
+        logger.debug(f"Processing references section with content: {c}")
+        if isinstance(c, str):
+            logger.debug(f"Processing string reference: {c}")
+            return parse_references(c)
+        logger.debug(f"Processing list reference: {c}")
+        return c
+
     section_formatters = {
         "Returns": lambda c: {"title": "Returns", "content": _format_returns_data(c), "contentType": "data"},
         "Raises": lambda c: {"title": "Raises", "content": _format_raises_data(c), "contentType": "data"},
         "Example": lambda c: {"title": "Example", "content": c, "contentType": "code"},
         "References": lambda c: {
             "title": "References",
-            "content": c,  # References are already parsed by google-docstring-parser
+            "content": process_references(c),
             "contentType": "reference",
         },
     }
