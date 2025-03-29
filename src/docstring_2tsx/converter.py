@@ -164,9 +164,19 @@ def file_to_tsx(module: object, module_name: str) -> str:
         member_data = class_to_data(obj)
         members_data.append(member_data)
 
+    # Parse module-level docstring
+    module_docstring = module.__doc__ or ""
+    try:
+        parsed_module_doc = parse_google_docstring(module_docstring)
+        module_description = process_description(parsed_module_doc)
+    except Exception:
+        logger.exception("Error parsing module docstring for %s", module_name)
+        module_description = None
+
     # Create module data
     module_data = {
         "moduleName": module_name,
+        "description": module_description,
         "members": members_data,
     }
 

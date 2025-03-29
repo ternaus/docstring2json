@@ -5,6 +5,7 @@ This module contains functions that are shared between markdown and TSX converte
 
 import importlib
 import inspect
+import logging
 import pkgutil
 from collections import defaultdict
 from collections.abc import Callable
@@ -13,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
 
 
 def normalize_anchor_id(module_name: str, name: str) -> str:
@@ -224,10 +227,10 @@ def process_module_file(config: ModuleFileConfig) -> bool:
             simplified_path = [part for part in simplified_path if part != "__init__"]
 
             # Create the output directory path
-            output_dir = config.output_dir / "/".join(simplified_path)
+            output_dir = config.output_dir / "/".join(simplified_path) / file_name
         else:
             # For root modules, use the output directory directly
-            output_dir = config.output_dir
+            output_dir = config.output_dir / file_name
 
         # Create the output directory
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -241,6 +244,7 @@ def process_module_file(config: ModuleFileConfig) -> bool:
 
         return True
     except (ImportError, AttributeError, OSError, ValueError):
+        logger.exception(f"Failed to process module file {config.file_path}")
         return False
 
 
