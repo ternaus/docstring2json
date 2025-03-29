@@ -209,32 +209,48 @@ def build_output_dir(config: ModuleFileConfig, module_name: str, file_name: str)
     return config.output_dir / file_name
 
 
-def process_module_file(config: ModuleFileConfig) -> bool:
-    """Process a single module file and generate documentation.
+def process_module_file(
+    file_path: str,
+    modules: list[tuple[object, str]],
+    converter_func: Callable[[object, str], str],  # (module, module_name)
+) -> bool:
+    """Process a module file and generate documentation.
 
     Args:
-        config: Configuration for module file processing
+        file_path: Path to the module file
+        modules: List of (module, module_name) tuples
+        converter_func: Function to convert module to documentation
 
     Returns:
         bool: True if processing was successful, False otherwise
     """
     try:
-        path_obj = Path(config.file_path)
+        path_obj = Path(file_path)
         file_name = path_obj.stem
         if file_name == "__init__":
             return False
 
-        module, module_name = min(config.modules, key=lambda x: len(x[1]))
-        output_dir = build_output_dir(config, module_name, file_name)
+        module, module_name = min(modules, key=lambda x: len(x[1]))
+        output_dir = build_output_dir(
+            ModuleFileConfig(
+                file_path=file_path,
+                modules=modules,
+                output_dir=Path(),  # This will be set by the caller
+                output_extension=".tsx",
+                converter_func=converter_func,
+            ),
+            module_name,
+            file_name,
+        )
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        content = config.converter_func(module, module_name)
-        output_file = output_dir / f"page{config.output_extension}"
+        content = converter_func(module, module_name)
+        output_file = output_dir / "page.tsx"
         output_file.write_text(content)
 
         return True
     except (ImportError, AttributeError, OSError, ValueError):
-        logger.exception(f"Failed to process module file {config.file_path}")
+        logger.exception(f"Failed to process module file {file_path}")
         return False
 
 
@@ -256,13 +272,5 @@ def package_to_structure(config: PackageConfig) -> None:
     # Process each file
     with tqdm(total=len(module_groups), desc=config.progress_desc) as pbar:
         for file_path, file_modules in module_groups.items():
-            file_config = ModuleFileConfig(
-                file_path=file_path,
-                modules=file_modules,
-                output_dir=config.output_dir,
-                exclude_private=config.exclude_private,
-                converter_func=config.converter_func,
-                output_extension=config.output_extension,
-            )
-            if process_module_file(file_config):
+            if process_module_file(file_path, file_modules, config.converter_func):
                 pbar.update(1)
