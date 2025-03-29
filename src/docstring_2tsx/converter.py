@@ -11,19 +11,22 @@ from pathlib import Path
 
 from google_docstring_parser import parse_google_docstring
 
-from docstring_2tsx.processor import (
+from src.docstring_2tsx.processor import (
     build_params_data,
     format_section_data,
     process_description,
 )
-from utils.shared import (
+from src.utils.shared import (
     collect_module_members,
     collect_package_modules,
     group_modules_by_file,
     has_documentable_members,
     process_module_file,
 )
-from utils.signature_formatter import format_signature, get_signature_params
+from src.utils.signature_formatter import (
+    format_signature,
+    get_signature_params,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +50,7 @@ def get_source_line(obj: type | Callable) -> int:
 
 
 def get_source_code(obj: type | Callable) -> str | None:
-    """Get the source code of a class or function.
+    """Get source code for a class or function.
 
     Args:
         obj: Class or function to get source code for
@@ -79,8 +82,8 @@ def class_to_data(obj: type | Callable) -> dict:
     obj_name = obj.__name__
     params = get_signature_params(obj)
 
-    # Format signature
-    signature = format_signature(obj, params)
+    # Get signature data
+    signature_data = format_signature(obj, params)
 
     # Get source code and line number
     source_code = get_source_code(obj)
@@ -108,11 +111,26 @@ def class_to_data(obj: type | Callable) -> dict:
             if section_data:
                 sections.append(section_data)
 
+    # Convert signature data to dict
+    signature_dict = {
+        "name": signature_data.name,
+        "params": [
+            {
+                "name": p.name,
+                "type": p.type,
+                "default": p.default,
+                "description": p.description,
+            }
+            for p in signature_data.params
+        ],
+        "return_type": signature_data.return_type,
+    }
+
     # Create the data structure
     member_data = {
         "name": obj_name,
         "type": "class" if isinstance(obj, type) else "function",
-        "signature": signature,
+        "signature": signature_dict,
         "source_line": source_line,
     }
 

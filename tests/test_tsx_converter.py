@@ -9,7 +9,7 @@ from src.docstring_2tsx.processor import (
     format_section_data,
 )
 from src.docstring_2tsx.converter import class_to_data, COMPONENTS_IMPORT_PATH
-from src.utils.signature_formatter import Parameter
+from src.utils.signature_formatter import Parameter, SignatureData
 
 
 class DummyClass:
@@ -148,6 +148,9 @@ def test_class_to_data():
     assert result["name"] == "DummyClass"
     assert result["type"] == "class"
     assert "signature" in result
+    assert isinstance(result["signature"], dict)
+    assert result["signature"]["name"] == "DummyClass"
+    assert "params" in result["signature"]
     assert "description" in result
     assert "params" in result
     assert len(result["params"]) == 2
@@ -158,6 +161,10 @@ def test_class_to_data():
     assert result["name"] == "dummy_function"
     assert result["type"] == "function"
     assert "signature" in result
+    assert isinstance(result["signature"], dict)
+    assert result["signature"]["name"] == "dummy_function"
+    assert "params" in result["signature"]
+    assert result["signature"]["return_type"] == "str"
     assert "description" in result
     assert "params" in result
     assert "sections" in result
@@ -175,7 +182,14 @@ def test_tsx_content_generation(monkeypatch):
             {
                 "name": "TestClass",
                 "type": "class",
-                "signature": "TestClass(param1: str, param2: int = 42)",
+                "signature": {
+                    "name": "TestClass",
+                    "params": [
+                        {"name": "param1", "type": "str", "default": None, "description": "First parameter"},
+                        {"name": "param2", "type": "int", "default": 42, "description": "Second parameter"}
+                    ],
+                    "return_type": None
+                },
                 "description": "This is a test class",
                 "params": [
                     {"name": "param1", "type": "str", "description": "First parameter"},
