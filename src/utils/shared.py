@@ -5,7 +5,6 @@ This module contains functions that are shared between markdown and TSX converte
 
 import importlib
 import inspect
-import logging
 import pkgutil
 from collections import defaultdict
 from collections.abc import Callable
@@ -14,8 +13,6 @@ from pathlib import Path
 from typing import Any
 
 from tqdm import tqdm
-
-logger = logging.getLogger(__name__)
 
 
 def normalize_anchor_id(module_name: str, name: str) -> str:
@@ -76,7 +73,6 @@ def collect_package_modules(
     # Process the root module
     if hasattr(package, "__file__") and package.__file__:
         modules_to_process.append((package, package.__name__))
-        logger.debug(f"Added root module: {package.__name__} from {package.__file__}")
 
     # Find all submodules recursively using a queue
     modules_to_explore = [(package, package_name)]
@@ -92,28 +88,21 @@ def collect_package_modules(
         if not hasattr(current_package, "__path__"):
             continue
 
-        logger.debug(f"Scanning for submodules in {current_name}, path: {current_package.__path__}")
-
         for _module_finder, module_name, is_pkg in pkgutil.iter_modules(current_package.__path__, f"{current_name}."):
-            logger.debug(f"Found submodule: {module_name}, is_package: {is_pkg}")
-
             if exclude_private and any(part.startswith("_") for part in module_name.split(".")):
-                logger.debug(f"Skipping private module: {module_name}")
                 continue
 
             try:
                 module = importlib.import_module(module_name)
                 if hasattr(module, "__file__") and module.__file__:
                     modules_to_process.append((module, module_name))
-                    logger.debug(f"Added module: {module_name} from {module.__file__}")
 
                     # If this is a package, add it to the exploration queue
                     if is_pkg:
                         modules_to_explore.append((module, module_name))
             except (ImportError, AttributeError):
-                logger.exception(f"Failed to import module {module_name}")
+                pass
 
-    logger.debug(f"Collected {len(modules_to_process)} modules in total")
     return modules_to_process
 
 
@@ -210,8 +199,6 @@ def process_module_file(config: ModuleFileConfig) -> bool:
         path_obj = Path(config.file_path)
         file_name = path_obj.stem
 
-        logger.debug(f"Processing {config.file_path}, stem: {file_name}")
-
         # Skip all __init__ files
         if file_name == "__init__":
             return False
@@ -254,7 +241,6 @@ def process_module_file(config: ModuleFileConfig) -> bool:
 
         return True
     except (ImportError, AttributeError, OSError, ValueError):
-        logger.exception(f"Failed to process module file {config.file_path}")
         return False
 
 
@@ -264,35 +250,25 @@ def package_to_structure(config: PackageConfig) -> None:
     Args:
         config: Configuration for processing the package
     """
-    try:
-        # Import the package
-        package = importlib.import_module(config.package_name)
-        logger.info("Imported package %s", config.package_name)
+    # Import the package
+    package = importlib.import_module(config.package_name)
 
-        # Collect all modules in the package
-        modules = collect_package_modules(package, config.package_name, exclude_private=config.exclude_private)
-        logger.info("Collected %d modules", len(modules))
+    # Collect all modules in the package
+    modules = collect_package_modules(package, config.package_name, exclude_private=config.exclude_private)
 
-        # Group modules by file
-        module_groups = group_modules_by_file(modules)
-        logger.info("Grouped modules into %d files", len(module_groups))
+    # Group modules by file
+    module_groups = group_modules_by_file(modules)
 
-        # Process each file
-        with tqdm(total=len(module_groups), desc=config.progress_desc) as pbar:
-            for file_path, file_modules in module_groups.items():
-                file_config = ModuleFileConfig(
-                    file_path=file_path,
-                    modules=file_modules,
-                    output_dir=config.output_dir,
-                    exclude_private=config.exclude_private,
-                    converter_func=config.converter_func,
-                    output_extension=config.output_extension,
-                )
-                if process_module_file(file_config):
-                    pbar.update(1)
-                else:
-                    logger.warning("Failed to process file %s", file_path)
-
-    except Exception:
-        logger.exception("Error processing package %s", config.package_name)
-        raise
+    # Process each file
+    with tqdm(total=len(module_groups), desc=config.progress_desc) as pbar:
+        for file_path, file_modules in module_groups.items():
+            file_config = ModuleFileConfig(
+                file_path=file_path,
+                modules=file_modules,
+                output_dir=config.output_dir,
+                exclude_private=config.exclude_private,
+                converter_func=config.converter_func,
+                output_extension=config.output_extension,
+            )
+            if process_module_file(file_config):
+                pbar.update(1)

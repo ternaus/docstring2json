@@ -5,12 +5,9 @@ including parameter formatting and documentation.
 """
 
 import inspect
-import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -127,7 +124,6 @@ def get_signature_params(obj: type | Callable) -> list[Parameter]:
             return _process_signature_params(signature)
     except (ValueError, TypeError):
         # Handle built-in types, Exception classes, or other types without a signature
-        logger.debug("Could not get signature for %s, returning empty parameters list", obj.__name__)
         return []
 
 

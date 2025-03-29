@@ -5,14 +5,11 @@ This module contains functions that are shared between markdown and TSX converte
 
 import importlib
 import inspect
-import logging
 import pkgutil
 from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-
-logger = logging.getLogger(__name__)
 
 
 def collect_module_members(module: object) -> tuple[list[tuple[str, object]], list[tuple[str, object]]]:
@@ -75,8 +72,8 @@ def collect_package_modules(package: object, *, exclude_private: bool = True) ->
         try:
             module = importlib.import_module(f"{package.__name__}.{name}")
             modules.append((name, module))
-        except ImportError as e:
-            logger.warning("Failed to import module %s: %s", name, e)
+        except ImportError:
+            pass
 
     return modules
 
@@ -100,7 +97,7 @@ def group_modules_by_file(modules: list[tuple[str, object]]) -> dict[str, list[t
             file_path = inspect.getfile(module)
             groups[file_path].append((name, module))
         except (TypeError, OSError):
-            logger.warning("Could not determine file path for module %s", name)
+            pass
 
     return dict(groups)
 
@@ -148,14 +145,14 @@ def process_module_file(
     """
     content = []
 
-    for name, module in modules:
+    for _, module in modules:
         # Note: try-except inside loop is necessary here as each module needs to be
         # processed independently. Moving it outside would make error handling more complex
         # and less maintainable. The performance impact is minimal as this is not in a hot path.
         try:
             doc = converter_func(module, github_repo, branch)
             content.append(doc)
-        except (ValueError, TypeError, AttributeError) as e:
-            logger.warning("Failed to process module %s: %s", name, e)
+        except (ValueError, TypeError, AttributeError):
+            pass
 
     return "\n\n".join(content)
