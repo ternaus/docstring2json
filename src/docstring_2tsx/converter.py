@@ -11,19 +11,19 @@ from pathlib import Path
 
 from google_docstring_parser import parse_google_docstring
 
-from src.docstring_2tsx.processor import (
+from docstring_2tsx.processor import (
     build_params_data,
     format_section_data,
     process_description,
 )
-from src.utils.shared import (
+from utils.shared import (
     collect_module_members,
     collect_package_modules,
     group_modules_by_file,
     has_documentable_members,
     process_module_file,
 )
-from src.utils.signature_formatter import (
+from utils.signature_formatter import (
     format_signature,
     get_signature_params,
 )
