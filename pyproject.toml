@@ -5,7 +5,7 @@ requires = [ "setuptools>=45", "wheel" ]
 
 [project]
 name = "google-docstring-2tsx"
-version = "0.0.3"
+version = "0.0.4"
 description = "A tool to convert Google-style docstrings to TSX format for Next.js documentation"
 readme = "README.md"
 keywords = [
@@ -53,7 +53,7 @@ optional-dependencies.dev = [
 ]
 urls."bug tracker" = "https://github.com/ternaus/google-docstring-2tsx/issues"
 urls.homepage = "https://github.com/ternaus/google-docstring-2tsx"
-scripts.docstring2tsx = "src.__main__:main"
+scripts.docstring2tsx = "docstring_2tsx.__main__:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -118,6 +118,7 @@ lint.ignore = [
   "EM102",
   # Allow boolean positional parameter with default value - we've addressed this with keyword-only parameters
   "FBT001",
+  "FBT002",
   # Allow f-strings in logging - we've addressed this with proper string formatting
   "G004",
   "PERF203",

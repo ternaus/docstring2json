@@ -213,6 +213,8 @@ def process_module_file(
     file_path: str,
     modules: list[tuple[object, str]],
     converter_func: Callable[[object, str], str],  # (module, module_name)
+    output_dir: Path,
+    exclude_private: bool = False,
 ) -> bool:
     """Process a module file and generate documentation.
 
@@ -220,6 +222,8 @@ def process_module_file(
         file_path: Path to the module file
         modules: List of (module, module_name) tuples
         converter_func: Function to convert module to documentation
+        output_dir: Directory to write output files
+        exclude_private: Whether to exclude private members
 
     Returns:
         bool: True if processing was successful, False otherwise
@@ -235,9 +239,10 @@ def process_module_file(
             ModuleFileConfig(
                 file_path=file_path,
                 modules=modules,
-                output_dir=Path(),  # This will be set by the caller
+                output_dir=output_dir,
                 output_extension=".tsx",
                 converter_func=converter_func,
+                exclude_private=exclude_private,
             ),
             module_name,
             file_name,
@@ -255,22 +260,41 @@ def process_module_file(
 
 
 def package_to_structure(config: PackageConfig) -> None:
-    """Convert a package to a documentation structure.
+    """Process a package and generate documentation structure.
 
     Args:
-        config: Configuration for processing the package
+        config: Configuration for package processing
     """
-    # Import the package
-    package = importlib.import_module(config.package_name)
+    try:
+        # Import the package
+        package = importlib.import_module(config.package_name)
+        if not hasattr(package, "__file__"):
+            logger.error("Package %s has no __file__ attribute", config.package_name)
+            return
 
-    # Collect all modules in the package
-    modules = collect_package_modules(package, config.package_name, exclude_private=config.exclude_private)
+        # Collect all modules in the package
+        modules = collect_package_modules(
+            package,
+            config.package_name,
+            exclude_private=config.exclude_private,
+        )
 
-    # Group modules by file
-    module_groups = group_modules_by_file(modules)
+        # Group modules by file
+        module_groups = group_modules_by_file(modules)
 
-    # Process each file
-    with tqdm(total=len(module_groups), desc=config.progress_desc) as pbar:
-        for file_path, file_modules in module_groups.items():
-            if process_module_file(file_path, file_modules, config.converter_func):
-                pbar.update(1)
+        # Process each file with progress bar
+        with tqdm(total=len(module_groups), desc=config.progress_desc) as pbar:
+            for file_path, file_modules in module_groups.items():
+                if process_module_file(
+                    file_path,
+                    file_modules,
+                    config.converter_func,
+                    output_dir=config.output_dir,
+                    exclude_private=config.exclude_private,
+                ):
+                    pbar.update(1)
+                else:
+                    pbar.update(1)
+
+    except Exception:
+        logger.exception("Error processing package %s", config.package_name)
