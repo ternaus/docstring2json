@@ -111,26 +111,23 @@ def class_to_data(obj: type | Callable) -> dict:
             if section_data:
                 sections.append(section_data)
 
-    # Convert signature data to dict
-    signature_dict = {
-        "name": signature_data.name,
-        "params": [
-            {
-                "name": p.name,
-                "type": p.type,
-                "default": p.default,
-                "description": p.description,
-            }
-            for p in signature_data.params
-        ],
-        "return_type": signature_data.return_type,
-    }
-
     # Create the data structure
     member_data = {
         "name": obj_name,
         "type": "class" if isinstance(obj, type) else "function",
-        "signature": signature_dict,
+        "signature": {
+            "name": signature_data.name,
+            "params": [
+                {
+                    "name": p.name,
+                    "type": p.type,
+                    "default": p.default,
+                    "description": p.description,
+                }
+                for p in signature_data.params
+            ],
+            "return_type": signature_data.return_type,
+        },
         "source_line": source_line,
     }
 
