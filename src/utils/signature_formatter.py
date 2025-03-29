@@ -49,6 +49,9 @@ def get_signature_params(obj: type | Callable) -> list[Parameter]:
                 # Clean up typing annotations (remove typing. prefix)
                 if "'" in param_type:
                     param_type = param_type.split("'")[1]
+                # For Literal types, keep the full type string
+                if param_type.startswith("Literal"):
+                    param_type = str(param.annotation)
 
             # Get default value
             default = param.default if param.default is not inspect.Signature.empty else None

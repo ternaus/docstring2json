@@ -49,7 +49,7 @@ def build_params_data(params: list[Parameter], parsed: dict) -> list[dict] | Non
     for param in params:
         param_dict = {
             "name": param.name,
-            "type": param.type or "",
+            "type": param_docs.get(param.name, {}).get("type", param.type or ""),
             "description": param_docs.get(param.name, {}).get("description", ""),
         }
         result.append(param_dict)
