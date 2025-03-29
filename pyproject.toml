@@ -4,19 +4,20 @@ build-backend = "setuptools.build_meta"
 requires = [ "setuptools>=45", "wheel" ]
 
 [project]
-name = "google-docstring-2md"
-version = "0.0.2"
-description = "A tool to convert Google-style docstrings to markdown format"
+name = "google-docstring-2tsx"
+version = "0.0.3"
+description = "A tool to convert Google-style docstrings to TSX format for Next.js documentation"
 readme = "README.md"
 keywords = [
   "docstring",
   "documentation",
-  "docusaurus",
   "google-style",
-  "markdown",
+  "nextjs",
   "parser",
   "python",
+  "react",
   "static-analysis",
+  "tsx",
   "type-hints",
 ]
 license = { text = "Custom License - See LICENSE file for details" }
@@ -24,7 +25,7 @@ maintainers = [ { name = "Vladimir Iglovikov" } ]
 authors = [
   { name = "Vladimir Iglovikov", email = "iglovikov@gmail.com" },
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",
@@ -32,8 +33,6 @@ classifiers = [
   "Operating System :: OS Independent",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -44,7 +43,6 @@ classifiers = [
 ]
 
 dependencies = [
-  "docstring-parser>=0.15",
   "google-docstring-parser",
   "tqdm>=4.65",
 ]
@@ -53,22 +51,23 @@ optional-dependencies.dev = [
   "pre-commit>=3.5",
   "pytest>=8.3.3",
 ]
-urls."bug tracker" = "https://github.com/ternaus/google-docstring-2md/issues"
-urls.homepage = "https://github.com/ternaus/google-docstring-2md"
-scripts.docstring2md = "google_docstring_2md.__main__:main"
+urls."bug tracker" = "https://github.com/ternaus/google-docstring-2tsx/issues"
+urls.homepage = "https://github.com/ternaus/google-docstring-2tsx"
+scripts.docstring2tsx = "src.__main__:main"
 
 [tool.setuptools]
-packages = [ "google_docstring_2md" ]
+package-dir = { "" = "src" }
+packages = [ "docstring_2tsx", "utils" ]
 
 [tool.setuptools.package-data]
-google_docstring_2md = [ "*.md" ]
+docstring_2tsx = [ "*.tsx", "templates/*.md", "templates/components/*.tsx.example" ]
 
 [tool.setuptools.exclude-package-data]
 "*" = [ "tests*" ]
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
-target-version = "py310"
+target-version = "py312"
 
 line-length = 120
 indent-width = 4
@@ -76,7 +75,6 @@ indent-width = 4
 # Assume Python 3.9
 exclude = [
   ".bzr",
-  ".cursor",
   ".direnv",
   ".eggs",
   ".git",
@@ -122,6 +120,7 @@ lint.ignore = [
   "FBT001",
   # Allow f-strings in logging - we've addressed this with proper string formatting
   "G004",
+  "PERF203",
   # Allow return statements in try blocks - the current structure is clearer
   "TRY300",
 ]
@@ -138,7 +137,7 @@ lint.dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 lint.pydocstyle.convention = "google"
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.12"
 ignore_missing_imports = true
 follow_imports = "silent"
 warn_redundant_casts = true
@@ -151,7 +150,7 @@ no_implicit_reexport = true
 disallow_untyped_defs = true
 
 [tool.docstring_checker]
-paths = [ "google_docstring_2md" ]
+paths = [ "docstring_2tsx", "utils" ]
 require_param_types = true
 check_type_consistency = true
 verbose = false
