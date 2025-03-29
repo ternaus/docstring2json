@@ -27,7 +27,7 @@ See the [LICENSE](LICENSE) file for full details.
 ## Installation
 
 ```bash
-pip install google-docstring-2md
+pip install google-docstring-2tsx
 ```
 
 ## Usage
