@@ -132,13 +132,12 @@ def test_format_section_data():
     assert ">>> result = test()" in result["content"]
 
     # Test with References section
-    result = format_section_data("References", "Author: Book Title")
+    references = [{"description": "Author", "source": "Book Title"}]
+    result = format_section_data("References", references)
     assert result is not None
     assert result["title"] == "References"
     assert result["contentType"] == "reference"
-    assert len(result["content"]) == 1
-    assert result["content"][0]["description"] == "Author"
-    assert result["content"][0]["source"] == "Book Title"
+    assert result["content"] == references
 
     # Test with empty content
     result = format_section_data("Notes", "")

@@ -6,7 +6,6 @@ that can be used with TSX components.
 
 import logging
 
-from utils.reference_parser import parse_references
 from utils.signature_formatter import Parameter
 
 logger = logging.getLogger(__name__)
@@ -57,7 +56,7 @@ def build_params_data(params: list[Parameter], parsed: dict) -> list[dict] | Non
     return result
 
 
-def _format_returns_data(content: list | dict | str) -> dict | None:
+def _format_returns_data(content: list | dict | str | None) -> dict | None:
     """Format the Returns section as data.
 
     Args:
@@ -74,14 +73,14 @@ def _format_returns_data(content: list | dict | str) -> dict | None:
     elif isinstance(content, dict):
         return_info = content
     else:
-        return {"type": "", "description": str(content)}
+        return {"type": None, "description": str(content)}
 
     if isinstance(return_info, dict):
         return {
-            "type": return_info.get("type", ""),
+            "type": return_info.get("type", None),
             "description": return_info.get("description", ""),
         }
-    return {"type": "", "description": str(return_info)}
+    return {"type": None, "description": str(return_info)}
 
 
 def _format_raises_data(content: list | str) -> list[dict] | None:
@@ -127,23 +126,20 @@ def format_section_data(section: str, content: list | dict | str) -> dict | None
     if not content:
         return None
 
-    # Helper function to handle references parsing conditionally
-    def process_references(c: str | list) -> list[dict] | list:
-        return parse_references(c) if isinstance(c, str) else c
-
     section_formatters = {
         "Returns": lambda c: {"title": "Returns", "content": _format_returns_data(c), "contentType": "data"},
         "Raises": lambda c: {"title": "Raises", "content": _format_raises_data(c), "contentType": "data"},
         "Example": lambda c: {"title": "Example", "content": c, "contentType": "code"},
         "References": lambda c: {
             "title": "References",
-            "content": process_references(c),
+            "content": c,  # References are already parsed by google-docstring-parser
             "contentType": "reference",
         },
     }
 
     formatter = section_formatters.get(section)
     if formatter:
+        logger.debug(f"Using formatter for section {section} with content: {content}")
         return formatter(content)
 
     # Default format for other sections

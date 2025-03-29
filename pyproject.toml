@@ -45,7 +45,6 @@ classifiers = [
 ]
 
 dependencies = [
-  "docstring-parser>=0.15",
   "google-docstring-parser",
   "tqdm>=4.65",
 ]
@@ -78,7 +77,6 @@ indent-width = 4
 # Assume Python 3.9
 exclude = [
   ".bzr",
-  ".cursor",
   ".direnv",
   ".eggs",
   ".git",

@@ -75,7 +75,11 @@ def class_to_data(obj: type | Callable, github_repo: str | None = None, branch: 
 
     # Parse docstring
     docstring = obj.__doc__ or ""
-    parsed = parse_google_docstring(docstring)
+    try:
+        parsed = parse_google_docstring(docstring)
+    except Exception:
+        logger.exception("Error parsing docstring for %s", docstring)
+        parsed = {}
 
     # Get description
     description = process_description(parsed)
