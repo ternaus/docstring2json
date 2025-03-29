@@ -32,14 +32,6 @@ def normalize_anchor_id(module_name: str, name: str) -> str:
 
 
 @dataclass
-class GitHubConfig:
-    """Configuration for GitHub repository links."""
-
-    github_repo: str | None
-    branch: str
-
-
-@dataclass
 class ModuleFileConfig:
     """Configuration for processing a module file."""
 
@@ -47,7 +39,6 @@ class ModuleFileConfig:
     modules: list[tuple[object, str]]
     output_dir: Path
     exclude_private: bool
-    github_config: GitHubConfig | None
     converter_func: Callable[[Any, str | None, str], str]
     output_extension: str
 
@@ -59,8 +50,6 @@ class PackageConfig:
     package_name: str
     output_dir: Path
     exclude_private: bool
-    github_repo: str | None
-    branch: str
     converter_func: Callable[[Any, str | None, str], str]
     output_extension: str
     progress_desc: str
@@ -248,119 +237,66 @@ def process_module_file(config: ModuleFileConfig) -> bool:
 
             # Also remove any __init__ components
             simplified_path = [part for part in simplified_path if part != "__init__"]
+
+            # Create the output directory path
+            output_dir = config.output_dir / "/".join(simplified_path)
         else:
-            simplified_path = []
+            # For root modules, use the output directory directly
+            output_dir = config.output_dir
 
-        logger.debug(f"Simplified path: {simplified_path}")
+        # Create the output directory
+        output_dir.mkdir(parents=True, exist_ok=True)
+        logger.debug(f"Created output directory: {output_dir}")
 
-        # Create the output directory path
-        module_dir = config.output_dir
-        if simplified_path:
-            module_dir = config.output_dir.joinpath(*simplified_path)
-            logger.debug(f"Creating directory: {module_dir}")
-            module_dir.mkdir(exist_ok=True, parents=True)
-        else:
-            logger.debug(f"Using root directory: {module_dir}")
+        # Convert the module to documentation
+        content = config.converter_func(module, module_name)
 
-        # Generate content
-        try:
-            # Wrap the generation in a try-except block to handle issues
-            content = config.converter_func(
-                module,
-                module_name,
-                github_repo=config.github_config.github_repo if config.github_config else None,
-                branch=config.github_config.branch if config.github_config else "main",
-            )
+        # Write the content to a file
+        output_file = output_dir / f"page{config.output_extension}"
+        output_file.write_text(content)
+        logger.debug(f"Wrote documentation to {output_file}")
 
-            # Create the Next.js page structure
-            page_path = module_dir / file_name
-            page_path.mkdir(exist_ok=True, parents=True)
-
-            # Write to file with specified extension
-            output_file = page_path / f"page{config.output_extension}"
-            logger.debug(f"Writing to file: {output_file}")
-            output_file.write_text(content)
-            return True
-        except (ValueError, TypeError, AttributeError, ImportError):
-            logger.exception(f"Failed to generate documentation for module {module_name}")
-            return False
-    except (ValueError, TypeError, AttributeError, ImportError, OSError):
-        logger.exception(f"Error processing file {config.file_path}")
+        return True
+    except Exception:
+        logger.exception("Error processing file %s", config.file_path)
         return False
 
 
 def package_to_structure(config: PackageConfig) -> None:
-    """Convert installed package to documentation files with directory structure.
-
-    This function imports the package, detects all modules and submodules, and
-    generates documentation for each file, while preserving the directory structure.
-    Progress is reported with a tqdm progress bar.
+    """Convert a package to a documentation structure.
 
     Args:
         config: Configuration for processing the package
     """
-    # Create GitHub config
-    github_config = GitHubConfig(github_repo=config.github_repo, branch=config.branch)
-
     try:
         # Import the package
         package = importlib.import_module(config.package_name)
-        config.output_dir.mkdir(exist_ok=True, parents=True)
+        logger.info("Imported package %s", config.package_name)
 
         # Collect all modules in the package
-        logger.info(f"Collecting modules in {config.package_name}...")
-        modules_to_process = collect_package_modules(
-            package,
-            config.package_name,
-            exclude_private=config.exclude_private,
-        )
-
-        # Debug output for modules collected
-        logger.debug(f"Total modules collected: {len(modules_to_process)}")
-        for module, module_name in modules_to_process:
-            logger.debug(f"Module: {module_name} from {getattr(module, '__file__', 'Unknown file')}")
+        modules = collect_package_modules(package, config.package_name, exclude_private=config.exclude_private)
+        logger.info("Collected %d modules", len(modules))
 
         # Group modules by file
-        file_to_modules = group_modules_by_file(modules_to_process)
+        module_groups = group_modules_by_file(modules)
+        logger.info("Grouped modules into %d files", len(module_groups))
 
-        # Debug output for file grouping
-        logger.debug(f"Total files to process: {len(file_to_modules)}")
-        for file_path, modules in file_to_modules.items():
-            logger.debug(f"File: {file_path} with {len(modules)} modules")
-            for _module, module_name in modules:
-                logger.debug(f"  - Module: {module_name}")
-
-        # Process each file and generate documentation
-        logger.info(f"Processing {len(file_to_modules)} files...")
-        success_count = 0
-        error_count = 0
-
-        for file_path, modules in tqdm(file_to_modules.items(), desc=config.progress_desc):
-            logger.debug(f"Processing file: {file_path}")
-            try:
-                module_config = ModuleFileConfig(
+        # Process each file
+        with tqdm(total=len(module_groups), desc=config.progress_desc) as pbar:
+            for file_path, file_modules in module_groups.items():
+                file_config = ModuleFileConfig(
                     file_path=file_path,
-                    modules=modules,
+                    modules=file_modules,
                     output_dir=config.output_dir,
                     exclude_private=config.exclude_private,
-                    github_config=github_config,
                     converter_func=config.converter_func,
                     output_extension=config.output_extension,
                 )
-                if process_module_file(module_config):
-                    success_count += 1
+                if process_module_file(file_config):
+                    pbar.update(1)
                 else:
-                    error_count += 1
-            except (ValueError, TypeError, AttributeError, ImportError, OSError):
-                logger.exception(f"Error processing file {file_path}")
-                error_count += 1
+                    logger.warning("Failed to process file %s", file_path)
 
-        logger.info(
-            f"Documentation generation complete. Processed {len(file_to_modules)} files: "
-            f"{success_count} successful, {error_count} with errors.",
-        )
-
-    except ImportError:
-        logger.exception(f"Could not import package '{config.package_name}'")
-    except (ValueError, TypeError, AttributeError):
-        logger.exception(f"Error processing package '{config.package_name}'")
+    except Exception:
+        logger.exception("Error processing package %s", config.package_name)
+        raise

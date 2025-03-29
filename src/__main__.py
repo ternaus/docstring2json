@@ -18,8 +18,6 @@ class DocumentationConfig:
     package_name: str
     output_dir: Path
     exclude_private: bool = False
-    github_repo: str | None = None
-    branch: str = "main"
 
 
 def generate_documentation(config: DocumentationConfig) -> None:
@@ -33,8 +31,6 @@ def generate_documentation(config: DocumentationConfig) -> None:
             package_name=config.package_name,
             output_dir=config.output_dir,
             exclude_private=config.exclude_private,
-            github_repo=config.github_repo,
-            branch=config.branch,
             converter_func=file_to_tsx,
             output_extension=".tsx",
             progress_desc="Generating TSX",
@@ -51,8 +47,6 @@ def main() -> None:
     parser.add_argument("--package-name", required=True, help="Name of the package to document")
     parser.add_argument("--output-dir", required=True, help="Directory to write documentation to")
     parser.add_argument("--exclude-private", action="store_true", help="Exclude private classes and methods")
-    parser.add_argument("--github-repo", help="Base URL of the GitHub repository")
-    parser.add_argument("--branch", default="main", help="Branch name to link to")
 
     args = parser.parse_args()
 
@@ -60,8 +54,6 @@ def main() -> None:
         package_name=args.package_name,
         output_dir=Path(args.output_dir),
         exclude_private=args.exclude_private,
-        github_repo=args.github_repo,
-        branch=args.branch,
     )
     generate_documentation(config)
 

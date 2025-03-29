@@ -143,7 +143,7 @@ def test_format_section_data():
 def test_class_to_data():
     """Test the class_to_data function."""
     # Test with a class
-    result = class_to_data(DummyClass, github_repo="https://github.com/user/repo")
+    result = class_to_data(DummyClass)
 
     assert result["name"] == "DummyClass"
     assert result["type"] == "class"
@@ -151,10 +151,9 @@ def test_class_to_data():
     assert "description" in result
     assert "params" in result
     assert len(result["params"]) == 2
-    assert result["githubUrl"].startswith("https://github.com/user/repo/blob/main/")
 
     # Test with a function
-    result = class_to_data(dummy_function, github_repo="https://github.com/user/repo")
+    result = class_to_data(dummy_function)
 
     assert result["name"] == "dummy_function"
     assert result["type"] == "function"

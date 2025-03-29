@@ -46,7 +46,24 @@ def get_source_line(obj: type | Callable) -> int:
         return 1
 
 
-def class_to_data(obj: type | Callable, github_repo: str | None = None, branch: str = "main") -> dict:
+def get_source_code(obj: type | Callable) -> str | None:
+    """Get the source code of a class or function.
+
+    Args:
+        obj: Class or function to get source code for
+
+    Returns:
+        Source code as string or None if not available
+    """
+    try:
+        import inspect
+
+        return inspect.getsource(obj)
+    except (TypeError, OSError):
+        return None
+
+
+def class_to_data(obj: type | Callable) -> dict:
     """Convert class or function to structured data format.
 
     This function extracts documentation data for a class or function from
@@ -54,8 +71,6 @@ def class_to_data(obj: type | Callable, github_repo: str | None = None, branch: 
 
     Args:
         obj: Class or function to document
-        github_repo: Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
-        branch: Branch name for GitHub links (default: "main")
 
     Returns:
         Dictionary containing structured documentation data
@@ -67,11 +82,9 @@ def class_to_data(obj: type | Callable, github_repo: str | None = None, branch: 
     # Format signature
     signature = format_signature(obj, params)
 
-    # Prepare GitHub link if github_repo is provided
-    github_url = None
-    if github_repo:
-        source_line = get_source_line(obj)
-        github_url = f"{github_repo}/blob/{branch}/{obj.__module__.replace('.', '/')}.py#L{source_line}"
+    # Get source code and line number
+    source_code = get_source_code(obj)
+    source_line = get_source_line(obj)
 
     # Parse docstring
     docstring = obj.__doc__ or ""
@@ -100,6 +113,7 @@ def class_to_data(obj: type | Callable, github_repo: str | None = None, branch: 
         "name": obj_name,
         "type": "class" if isinstance(obj, type) else "function",
         "signature": signature,
+        "source_line": source_line,
     }
 
     # Add optional fields
@@ -107,22 +121,20 @@ def class_to_data(obj: type | Callable, github_repo: str | None = None, branch: 
         member_data["description"] = description
     if params_data:
         member_data["params"] = params_data
-    if github_url:
-        member_data["githubUrl"] = github_url
     if sections:
         member_data["sections"] = sections
+    if source_code:
+        member_data["source_code"] = source_code
 
     return member_data
 
 
-def file_to_tsx(module: object, module_name: str, *, github_repo: str | None = None, branch: str = "main") -> str:
+def file_to_tsx(module: object, module_name: str) -> str:
     """Convert a module to a TSX document that uses imported components.
 
     Args:
         module: The module object to document
         module_name: Name of the module for the heading
-        github_repo: Base URL of the GitHub repository (e.g., "https://github.com/username/repo")
-        branch: Branch name for GitHub links (default: "main")
 
     Returns:
         str: The TSX content
@@ -134,7 +146,7 @@ def file_to_tsx(module: object, module_name: str, *, github_repo: str | None = N
     members_data = []
     for _name, obj in sorted(classes + functions):
         # Convert to data structure
-        member_data = class_to_data(obj, github_repo=github_repo, branch=branch)
+        member_data = class_to_data(obj)
         members_data.append(member_data)
 
     # Create module data
@@ -147,7 +159,7 @@ def file_to_tsx(module: object, module_name: str, *, github_repo: str | None = N
     module_data_str = json.dumps(module_data, indent=2)
 
     # Create the page.tsx file content
-    components = "ModuleDoc, MemberDoc, Signature, Description, ParamsTable, GitHubLink, Section"
+    components = "ModuleDoc, MemberDoc, Signature, Description, ParamsTable, Section"
     return (
         f"import {{ {components} }} from '{COMPONENTS_IMPORT_PATH}';\n\n"
         "// Data structure extracted from Python docstrings\n"
@@ -161,17 +173,12 @@ def file_to_tsx(module: object, module_name: str, *, github_repo: str | None = N
 def package_to_tsx_files(
     package: object,
     output_dir: Path,
-    *,
-    github_repo: str | None = None,
-    branch: str = "main",
 ) -> None:
     """Convert a package to TSX files.
 
     Args:
         package: Python package
         output_dir: Directory to write TSX files
-        github_repo: Base URL of the GitHub repository
-        branch: Branch name for GitHub links
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -194,8 +201,6 @@ def package_to_tsx_files(
             content = process_module_file(
                 file_path,
                 file_modules,
-                github_repo=github_repo,
-                branch=branch,
                 converter_func=file_to_tsx,
             )
 
