@@ -6,12 +6,13 @@ This module contains functions that are shared between markdown and TSX converte
 import importlib
 import inspect
 import logging
+import os
 import pkgutil
-from collections import defaultdict
-from collections.abc import Callable, Sequence
+import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from types import FunctionType, ModuleType
+from types import ModuleType
 from typing import Any, TypeVar
 
 from tqdm import tqdm
@@ -21,17 +22,18 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-def normalize_anchor_id(module_name: str, name: str) -> str:
-    """Normalize a name for use as an HTML anchor ID.
+def normalize_anchor_id(text: str) -> str:
+    """Normalize text for use as an anchor ID.
 
     Args:
-        module_name: Module name
-        name: Name to normalize
+        text: Text to normalize
 
     Returns:
-        Normalized name suitable for use as an HTML anchor ID
+        str: Normalized text suitable for use as an anchor ID, with special characters removed
+            and spaces replaced with hyphens
     """
-    return f"{module_name.replace('.', '-')}-{name}".lower()
+    # Remove special characters and replace spaces with hyphens
+    return re.sub(r"[^a-zA-Z0-9\s-]", "", text).strip().lower().replace(" ", "-")
 
 
 @dataclass
@@ -39,7 +41,7 @@ class ModuleFileConfig:
     """Configuration for module file processing."""
 
     file_path: str
-    modules: Sequence[tuple[ModuleType, str]]
+    modules: list[tuple[ModuleType, str]]
     output_dir: Path
     output_extension: str
     converter_func: Callable[[ModuleType, str], str]
@@ -58,32 +60,19 @@ class PackageConfig:
     progress_desc: str
 
 
-def _walk_package(package: ModuleType, package_name: str, exclude_private: bool) -> list[tuple[ModuleType, str]]:
-    """Recursively walk through a package to find all modules.
+def _walk_package(package_path: str) -> list[str]:
+    """Walk through a package directory and collect Python files.
 
     Args:
-        package: Python package to walk through
-        package_name: Name of the package
-        exclude_private: Whether to exclude private modules
+        package_path: Path to the package directory
 
     Returns:
-        List of (module, module_name) tuples
+        list[str]: List of absolute paths to Python files in the package directory
     """
-    found: list[tuple[ModuleType, str]] = []
-    if not hasattr(package, "__path__"):
-        return found
-    for _, module_name, is_pkg in pkgutil.iter_modules(package.__path__, f"{package_name}."):
-        if exclude_private and any(part.startswith("_") for part in module_name.split(".")):
-            continue
-        try:
-            module = importlib.import_module(module_name)
-        except (ImportError, AttributeError):
-            continue
-        if hasattr(module, "__file__") and module.__file__:
-            found.append((module, module_name))
-        if is_pkg:
-            found.extend(_walk_package(module, module_name, exclude_private))
-    return found
+    python_files: list[str] = []
+    for root, _, files in os.walk(package_path):
+        python_files.extend(str(Path(root) / file) for file in files if file.endswith(".py"))
+    return python_files
 
 
 def collect_package_modules(
@@ -103,28 +92,41 @@ def collect_package_modules(
     modules: list[tuple[ModuleType, str]] = []
     if hasattr(package, "__file__") and package.__file__:
         modules.append((package, package.__name__))
-    modules.extend(_walk_package(package, package.__name__, exclude_private))
+    for _, module_name, is_pkg in pkgutil.iter_modules(package.__path__, f"{package.__name__}."):
+        if exclude_private and any(part.startswith("_") for part in module_name.split(".")):
+            continue
+        try:
+            module = importlib.import_module(module_name)
+        except (ImportError, AttributeError):
+            continue
+        if hasattr(module, "__file__") and module.__file__:
+            modules.append((module, module_name))
+        if is_pkg:
+            modules.extend(collect_package_modules(module, exclude_private=exclude_private))
     return modules
 
 
-def group_modules_by_file(
-    modules: Sequence[tuple[ModuleType, str]],
-) -> dict[str, list[tuple[ModuleType, str]]]:
-    """Group modules by their file path.
+def group_modules_by_file(modules: list[tuple[ModuleType, str]]) -> dict[str, list[tuple[ModuleType, str]]]:
+    """Group modules by their source file.
 
     Args:
         modules: List of (module, module_name) tuples
 
     Returns:
-        Dictionary mapping file paths to lists of (module, module_name) tuples
+        dict[str, list[tuple[ModuleType, str]]]: Dictionary mapping file paths to lists of
+            (module, module_name) tuples that share the same source file
     """
-    file_to_modules: dict[str, list[tuple[ModuleType, str]]] = defaultdict(list)
-
+    grouped: dict[str, list[tuple[ModuleType, str]]] = {}
     for module, module_name in modules:
-        if hasattr(module, "__file__") and module.__file__:
-            file_to_modules[module.__file__].append((module, module_name))
-
-    return file_to_modules
+        try:
+            file_path = inspect.getfile(module)
+            if file_path not in grouped:
+                grouped[file_path] = []
+            grouped[file_path].append((module, module_name))
+        except (TypeError, ValueError):
+            # Skip modules without source files
+            pass
+    return grouped
 
 
 def has_documentable_members(
@@ -159,57 +161,63 @@ def has_documentable_members(
     return False
 
 
-def collect_module_members(module: ModuleType) -> tuple[list[tuple[str, type[Any]]], list[tuple[str, FunctionType]]]:
+def collect_module_members(module: ModuleType) -> tuple[list[tuple[str, type]], list[tuple[str, Callable[..., Any]]]]:
     """Collect classes and functions from a module.
 
     Args:
-        module: Python module
+        module: Module to collect members from
 
     Returns:
-        Tuple of (classes, functions) where each is a list of (name, object) pairs
+        tuple[list[tuple[str, type]], list[tuple[str, Callable[..., Any]]]]: A tuple containing:
+            - List of (name, class) tuples for classes defined in the module
+            - List of (name, function) tuples for functions defined in the module
     """
-    classes: list[tuple[str, type[Any]]] = []
-    functions: list[tuple[str, FunctionType]] = []
+    classes: list[tuple[str, type]] = []
+    functions: list[tuple[str, Callable[..., Any]]] = []
 
     for name, obj in inspect.getmembers(module):
-        # Skip private members
-        if name.startswith("_"):
+        # Skip private members and imported objects
+        if name.startswith("_") or inspect.getmodule(obj) != inspect.getmodule(module):
             continue
 
-        # Only consider items defined in this module
-        if hasattr(obj, "__module__") and obj.__module__ == module.__name__:
-            if inspect.isclass(obj):
-                classes.append((name, obj))
-            elif inspect.isfunction(obj):
-                functions.append((name, obj))
+        if inspect.isclass(obj):
+            classes.append((name, obj))
+        elif inspect.isfunction(obj):
+            functions.append((name, obj))
 
     return classes, functions
 
 
 def build_output_dir(config: ModuleFileConfig, module_name: str, file_name: str) -> Path:
-    """Build the output directory path for a module file.
+    """Build output directory path for a module.
 
     Args:
-        config: Configuration for module file processing
-        module_name: Full module name (e.g., 'package.module.submodule')
-        file_name: Name of the file without extension
+        config: Module file configuration
+        module_name: Name of the module
+        file_name: Name of the file
 
     Returns:
-        Path to the output directory
+        Path: Output directory path constructed from the module name and file name,
+            with special handling for __init__.py files
     """
-    parts = module_name.split(".")
-    if len(parts) > 1:
-        simplified_path = parts[1:]
-        if simplified_path and simplified_path[-1] == file_name:
-            simplified_path = simplified_path[:-1]
-        simplified_path = [part for part in simplified_path if part != "__init__"]
-        return config.output_dir / "/".join(simplified_path) / file_name
-    return config.output_dir / file_name
+    # Convert module name to path segments
+    path_segments = module_name.split(".")
+
+    # Handle special cases
+    if file_name == "__init__":
+        # For __init__.py files, use the parent directory name
+        path_segments = path_segments[:-1]
+    elif not file_name.startswith("__"):
+        # For regular files, append the file name
+        path_segments.append(file_name)
+
+    # Build the output path
+    return config.output_dir.joinpath(*path_segments)
 
 
 def process_module_file(
     file_path: str,
-    modules: Sequence[tuple[ModuleType, str]],
+    modules: list[tuple[ModuleType, str]],
     converter_func: Callable[[ModuleType, str], str],
     output_dir: Path,
     exclude_private: bool = False,

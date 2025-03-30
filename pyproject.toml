@@ -150,7 +150,7 @@ no_implicit_reexport = true
 # for strict mypy: (this is the tricky one :-))
 disallow_untyped_defs = true
 
-[tool.docstring_checker]
+[tool.googl_docstring_checker]
 paths = [ "docstring_2tsx", "utils" ]
 require_param_types = true
 check_type_consistency = true
