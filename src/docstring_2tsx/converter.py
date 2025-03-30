@@ -182,22 +182,6 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
             else None,
         },
         "docstring": parsed,
-        "params": [
-            {
-                "name": name,
-                "type": param_type.__name__ if hasattr(param_type, "__name__") else str(param_type),
-                "description": description,
-            }
-            for name, (param_type, description) in parsed.get("params", {}).items()
-        ],
-        "sections": [
-            {
-                "title": section.title,
-                "content": section.content,
-                "contentType": "text",
-            }
-            for section in parsed.get("sections", [])
-        ],
         "source_line": source_line,
     }
 
