@@ -28,6 +28,37 @@ ERR_EXPECTED_DICT = "Expected dict result from convert_to_serializable"
 
 T = TypeVar("T")
 
+# Type aliases to make signatures more readable
+ClassTuple = tuple[str, type]
+FunctionTuple = tuple[str, Callable[..., Any]]
+ClassOrFunction = type | Callable[..., Any]
+
+
+def collect_module_members(module: ModuleType) -> tuple[list[ClassTuple], list[FunctionTuple]]:
+    """Collect classes and functions from a module.
+
+    Args:
+        module: The module to collect members from
+
+    Returns:
+        tuple[list[ClassTuple], list[FunctionTuple]]:
+            Tuple of (classes, functions) where each is a list of (name, obj) pairs
+    """
+    classes: list[ClassTuple] = []
+    functions: list[FunctionTuple] = []
+
+    for name, obj in inspect.getmembers(module):
+        # Skip private members and imported objects
+        if name.startswith("_") or inspect.getmodule(obj) != inspect.getmodule(module):
+            continue
+
+        if inspect.isclass(obj):
+            classes.append((name, obj))
+        elif inspect.isfunction(obj):
+            functions.append((name, obj))
+
+    return classes, functions
+
 
 def get_source_line(obj: type | Callable[..., Any]) -> int:
     """Get the source line number for a class or function.
@@ -116,22 +147,43 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
         "type": "class" if isinstance(obj, type) else "function",
         "signature": {
             "name": signature_data.name,
-            "params": signature_data.params,
+            "params": [
+                {
+                    "name": param.name,
+                    "type": param.annotation if param.annotation != inspect.Parameter.empty else "Any",
+                    "default": param.default if param.default != inspect.Parameter.empty else None,
+                    "description": parsed.get("params", {}).get(param.name, ""),
+                }
+                for param in inspect.signature(obj).parameters.values()
+                if param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD)
+            ],
             "return_type": signature_data.return_type,
         },
+        "description": parsed.get("description", ""),
+        "params": [
+            {
+                "name": name,
+                "type": param_type,
+                "description": description,
+            }
+            for name, (param_type, description) in parsed.get("params", {}).items()
+        ],
+        "sections": [
+            {
+                "title": section.title,
+                "content": section.content,
+                "contentType": "text",
+            }
+            for section in parsed.get("sections", [])
+        ],
         "source_line": source_line,
-        "docstring": parsed,  # Pass raw parsed docstring to React
     }
 
     # Add source code if available
     if source_code:
         member_data["source_code"] = source_code
 
-    # Convert to serializable format
-    result = convert_to_serializable(member_data)
-    if not isinstance(result, dict):
-        raise TypeError(ERR_EXPECTED_DICT)
-    return result
+    return member_data
 
 
 def file_to_tsx(module: ModuleType, module_name: str) -> str:
@@ -145,40 +197,39 @@ def file_to_tsx(module: ModuleType, module_name: str) -> str:
         str: The TSX content
     """
     # Collect module members
-    members_data: list[dict[str, Any]] = []
-    for name, obj in inspect.getmembers(module):
-        # Skip private members and imported objects
-        if name.startswith("_") or inspect.getmodule(obj) != inspect.getmodule(module):
-            continue
+    classes, functions = collect_module_members(module)
 
-        if inspect.isclass(obj) or inspect.isfunction(obj):
-            # Convert to data structure
-            member_data = class_to_data(obj)
-            members_data.append(member_data)
+    # Process classes and functions to get their data
+    members_data: list[dict[str, Any]] = []
+
+    # Process all classes first, then all functions
+    for _name, class_obj in classes:
+        member_data = class_to_data(class_obj)
+        members_data.append(member_data)
+
+    for _name, func_obj in functions:
+        member_data = class_to_data(func_obj)
+        members_data.append(member_data)
 
     # Parse module-level docstring
     module_docstring = module.__doc__ or ""
     try:
+        parsed = parse_google_docstring(module_docstring)
         module_data = {
             "moduleName": module_name,
-            "docstring": parse_google_docstring(module_docstring),
+            "description": parsed.get("description", ""),
             "members": members_data,
         }
     except Exception:
         logger.exception("Error parsing module docstring for %s", module_name)
         module_data = {
             "moduleName": module_name,
-            "docstring": {},
+            "description": "",
             "members": members_data,
         }
 
     # JSON representation of the data (with indentation for readability)
-    try:
-        module_data_str = json.dumps(module_data, indent=2)
-    except TypeError:
-        logger.exception("Failed to serialize module data")
-        logger.exception("Module data: %s", module_data)
-        raise
+    module_data_str = json.dumps(module_data, indent=2)
 
     # Create the page.tsx file content
     components = "ModuleDoc"
