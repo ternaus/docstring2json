@@ -8,7 +8,6 @@ import inspect
 import logging
 import pkgutil
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 from typing import Any, TypeVar
@@ -16,18 +15,6 @@ from typing import Any, TypeVar
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
-
-
-@dataclass
-class ModuleFileConfig:
-    """Configuration for module file processing."""
-
-    file_path: str
-    modules: list[tuple[ModuleType, str]]
-    output_dir: Path
-    output_extension: str
-    converter_func: Callable[[ModuleType, str], str]
-    exclude_private: bool = False
 
 
 def collect_module_members(module: ModuleType) -> tuple[list[tuple[str, type]], list[tuple[str, Callable[..., Any]]]]:
@@ -176,11 +163,11 @@ def has_documentable_members(
     return False
 
 
-def build_output_dir(config: ModuleFileConfig, module_name: str, file_name: str) -> Path:
+def build_output_dir(output_dir: Path, module_name: str, file_name: str) -> Path:
     """Build output directory path for a module.
 
     Args:
-        config: Module file configuration
+        output_dir: Base output directory
         module_name: Name of the module
         file_name: Name of the file
 
@@ -199,7 +186,7 @@ def build_output_dir(config: ModuleFileConfig, module_name: str, file_name: str)
         path_segments.append(file_name)
 
     # Build the output path
-    return config.output_dir.joinpath(*path_segments)
+    return output_dir.joinpath(*path_segments)
 
 
 def process_module_file(
@@ -207,7 +194,6 @@ def process_module_file(
     modules: list[tuple[ModuleType, str]],
     converter_func: Callable[[ModuleType, str], str],
     output_dir: Path,
-    exclude_private: bool = False,
 ) -> bool:
     """Process a module file and generate documentation.
 
@@ -216,7 +202,6 @@ def process_module_file(
         modules: List of (module, module_name) tuples
         converter_func: Function to convert module to documentation
         output_dir: Directory to write output files
-        exclude_private: Whether to exclude private members
 
     Returns:
         bool: True if processing was successful, False otherwise
@@ -228,22 +213,15 @@ def process_module_file(
             return False
 
         module, module_name = min(modules, key=lambda x: len(x[1]))
-        output_dir = build_output_dir(
-            ModuleFileConfig(
-                file_path=file_path,
-                modules=modules,
-                output_dir=output_dir,
-                output_extension=".tsx",
-                converter_func=converter_func,
-                exclude_private=exclude_private,
-            ),
+        module_output_dir = build_output_dir(
+            output_dir,
             module_name,
             file_name,
         )
-        output_dir.mkdir(parents=True, exist_ok=True)
+        module_output_dir.mkdir(parents=True, exist_ok=True)
 
         content = converter_func(module, module_name)
-        output_file = output_dir / "page.tsx"
+        output_file = module_output_dir / "page.tsx"
         output_file.write_text(content)
 
         return True
