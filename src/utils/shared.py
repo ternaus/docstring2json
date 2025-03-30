@@ -58,36 +58,9 @@ class PackageConfig:
     progress_desc: str
 
 
-def _walk_package(package: ModuleType, package_name: str, exclude_private: bool) -> list[tuple[ModuleType, str]]:
-    """Recursively walk through a package to find all modules.
-
-    Args:
-        package: Python package to walk through
-        package_name: Name of the package
-        exclude_private: Whether to exclude private modules
-
-    Returns:
-        List of (module, module_name) tuples
-    """
-    found: list[tuple[ModuleType, str]] = []
-    if not hasattr(package, "__path__"):
-        return found
-    for _, module_name, is_pkg in pkgutil.iter_modules(package.__path__, f"{package_name}."):
-        if exclude_private and any(part.startswith("_") for part in module_name.split(".")):
-            continue
-        try:
-            module = importlib.import_module(module_name)
-        except (ImportError, AttributeError):
-            continue
-        if hasattr(module, "__file__") and module.__file__:
-            found.append((module, module_name))
-        if is_pkg:
-            found.extend(_walk_package(module, module_name, exclude_private))
-    return found
-
-
 def collect_package_modules(
     package: ModuleType,
+    package_name: str = "",
     *,
     exclude_private: bool = False,
 ) -> list[tuple[ModuleType, str]]:
@@ -95,12 +68,15 @@ def collect_package_modules(
 
     Args:
         package: Python package
+        package_name: Name of the package
         exclude_private: Whether to exclude private modules
 
     Returns:
         list: List of (module, module_name) tuples
     """
-    modules: list[tuple[ModuleType, str]] = []
+    modules_to_process: list[tuple[ModuleType, str]] = []
+
+    # Process the root module
     if hasattr(package, "__file__") and package.__file__:
         modules.append((package, package.__name__))
     modules.extend(_walk_package(package, package.__name__, exclude_private))

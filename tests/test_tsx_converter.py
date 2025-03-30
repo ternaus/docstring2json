@@ -4,8 +4,16 @@ import json
 from typing import Any
 
 import pytest
+from typing import Any, Mapping, Sequence
 
-from src.docstring_2tsx.converter import COMPONENTS_IMPORT_PATH, class_to_data
+from src.docstring_2tsx.processor import (
+    process_description,
+    build_params_data,
+    format_section_data,
+    _format_raises_data,
+    _format_returns_data,
+)
+from src.docstring_2tsx.converter import class_to_data, COMPONENTS_IMPORT_PATH
 from src.utils.signature_formatter import Parameter, SignatureData
 
 
@@ -67,6 +75,124 @@ def dummy_function(param1: str, param2: int = 42) -> str:
     if not param1:
         raise ValueError("param1 cannot be empty")
     return param1
+
+
+def test_process_description_empty() -> None:
+    """Test processing empty description."""
+    parsed: dict[str, str | list[Any] | dict[str, Any]] = {"Description": ""}
+    assert process_description(parsed) is None
+
+
+def test_process_description_with_content() -> None:
+    """Test processing description with content."""
+    parsed: dict[str, str | list[Any] | dict[str, Any]] = {"Description": "Test description"}
+    assert process_description(parsed) == "Test description"
+
+
+def test_build_params_data() -> None:
+    """Test building parameters data structure."""
+    params = [
+        Parameter(name="param1", type="str", default=None),
+        Parameter(name="param2", type="int", default="42"),
+    ]
+    parsed = {
+        "Args": [
+            {"name": "param1", "type": "str", "description": "First parameter"},
+            {"name": "param2", "type": "int", "description": "Second parameter"},
+        ],
+    }
+
+    result = build_params_data(params, parsed)
+    assert result is not None
+    assert len(result) == 2
+    assert result[0]["name"] == "param1"
+    assert result[0]["type"] == "str"
+    assert result[0]["description"] == "First parameter"
+    assert result[1]["name"] == "param2"
+    assert result[1]["type"] == "int"
+    assert result[1]["description"] == "Second parameter"
+
+
+def test_format_returns_data() -> None:
+    """Test formatting returns data."""
+    content = {
+        "type": "str",
+        "description": "Return value description",
+    }
+    result = _format_returns_data(content)
+    assert result == {
+        "type": "str",
+        "description": "Return value description",
+    }
+
+
+def test_format_raises_data() -> None:
+    """Test formatting raises data."""
+    content: list[dict[str, str]] = [
+        {
+            "type": "ValueError",
+            "description": "When value is invalid",
+        },
+        {
+            "type": "TypeError",
+            "description": "When type is wrong",
+        },
+    ]
+    result = _format_raises_data(content)
+    assert result == [
+        {
+            "type": "ValueError",
+            "description": "When value is invalid",
+        },
+        {
+            "type": "TypeError",
+            "description": "When type is wrong",
+        },
+    ]
+
+
+def test_format_section_data() -> None:
+    """Test formatting section data."""
+    section = "Example"
+    content = "Example code here"
+    result = format_section_data(section, content)
+    assert result == {
+        "title": "Example",
+        "content": content,
+        "contentType": "code",
+    }
+
+
+def test_format_section_data_with_returns() -> None:
+    """Test formatting section data with returns."""
+    section = "Returns"
+    content = {"type": "str", "description": "Return value"}
+    result = format_section_data(section, content)
+    assert result == {
+        "title": "Returns",
+        "content": {"type": "str", "description": "Return value"},
+        "contentType": "data",
+    }
+
+
+def test_format_section_data_with_raises() -> None:
+    """Test formatting section data with raises."""
+    section = "Raises"
+    content = [{"type": "ValueError", "description": "Invalid value"}]
+    result = format_section_data(section, content)
+    assert result == {
+        "title": "Raises",
+        "content": [{"type": "ValueError", "description": "Invalid value"}],
+        "contentType": "data",
+    }
+
+
+def test_format_section_data_with_empty_content() -> None:
+    """Test formatting section data with empty content."""
+    section = "Notes"
+    content = ""
+    result = format_section_data(section, content)
+    assert result is None
 
 
 def test_class_to_data():
