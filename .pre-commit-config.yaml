@@ -78,5 +78,5 @@ repos:
     rev: 0.0.7
     hooks:
       - id: check-google-docstrings
-        exclude: "^tests/ |albumentations-docs/ | build"
+        exclude: "^tests/|^albumentations-docs/|^build/"
         additional_dependencies: ["tomli>=2.0.0"]

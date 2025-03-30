@@ -40,8 +40,7 @@ def get_source_line(obj: type | Callable[..., Any]) -> int:
         obj: Class or function to get source line for
 
     Returns:
-        int: Line number in the source file where the object is defined,
-            or 1 if the line number cannot be determined
+        int: Line number in the source file
     """
     try:
         return obj.__code__.co_firstlineno if hasattr(obj, "__code__") else 1
@@ -56,8 +55,7 @@ def get_source_code(obj: type | Callable[..., Any]) -> str | None:
         obj: Class or function to get source code for
 
     Returns:
-        str | None: Source code string of the object, or None if the source code
-            cannot be retrieved (e.g., for built-in objects)
+        str | None: Source code as string or None if not available
     """
     try:
         import inspect
@@ -77,13 +75,7 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
         obj: Class or function to document
 
     Returns:
-        dict[str, Any]: Dictionary containing structured documentation data including:
-            - name: Object name
-            - type: "class" or "function"
-            - signature: Object signature data
-            - source_line: Line number in source file
-            - docstring: Parsed docstring data
-            - source_code: Source code (if available)
+        dict[str, Any]: Dictionary containing structured documentation data
     """
     # Get object name and parameters
     obj_name = obj.__name__

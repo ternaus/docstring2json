@@ -253,7 +253,6 @@ def process_module_file(
             module_name,
             file_name,
         )
-        output_dir.mkdir(parents=True, exist_ok=True)
 
         content = converter_func(module, module_name)
         output_file = output_dir / "page.tsx"
