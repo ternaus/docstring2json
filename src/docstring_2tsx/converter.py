@@ -13,11 +13,6 @@ from typing import Any, TypeVar
 
 from google_docstring_parser import parse_google_docstring
 
-from docstring_2tsx.processor import (
-    build_params_data,
-    format_section_data,
-    process_description,
-)
 from utils.shared import (
     collect_module_members,
     collect_package_modules,
@@ -103,18 +98,6 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
         logger.exception("Error parsing docstring for %s", docstring)
         parsed = {}
 
-    # Get description
-    description = process_description(parsed)
-
-    # Get parameters data
-    params_data = build_params_data(params, parsed)
-
-    # Process other sections (returns, raises, etc.)
-    sections: list[dict[str, Any]] = []
-    for section, content in parsed.items():
-        if section not in ["Description", "Args"] and (section_data := format_section_data(section, content)):
-            sections.append(section_data)
-
     # Create the data structure
     member_data: dict[str, Any] = {
         "name": obj_name,
@@ -126,22 +109,16 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
                     "name": p.name,
                     "type": p.type,
                     "default": p.default,
-                    "description": p.description,
                 }
                 for p in signature_data.params
             ],
             "return_type": signature_data.return_type,
         },
         "source_line": source_line,
+        "docstring": parsed,  # Pass raw parsed docstring to React
     }
 
-    # Add optional fields
-    if description:
-        member_data["description"] = description
-    if params_data:
-        member_data["params"] = params_data
-    if sections:
-        member_data["sections"] = sections
+    # Add source code if available
     if source_code:
         member_data["source_code"] = source_code
 
@@ -171,18 +148,18 @@ def file_to_tsx(module: ModuleType, module_name: str) -> str:
     # Parse module-level docstring
     module_docstring = module.__doc__ or ""
     try:
-        parsed_module_doc = parse_google_docstring(module_docstring)
-        module_description = process_description(parsed_module_doc)
+        module_data = {
+            "moduleName": module_name,
+            "docstring": parse_google_docstring(module_docstring),
+            "members": members_data,
+        }
     except Exception:
         logger.exception("Error parsing module docstring for %s", module_name)
-        module_description = None
-
-    # Create module data
-    module_data = {
-        "moduleName": module_name,
-        "description": module_description,
-        "members": members_data,
-    }
+        module_data = {
+            "moduleName": module_name,
+            "docstring": {},
+            "members": members_data,
+        }
 
     # JSON representation of the data (with indentation for readability)
     module_data_str = json.dumps(module_data, indent=2)
