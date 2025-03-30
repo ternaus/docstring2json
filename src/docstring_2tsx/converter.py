@@ -206,23 +206,11 @@ def package_to_tsx_files(
             continue
 
         try:
-            # Get the module name from the first module in the file
-            module_name = file_modules[0][1].__name__
-
-            # Process the file
-            content = process_module_file(
+            process_module_file(
                 file_path,
                 file_modules,
                 converter_func=file_to_tsx,
+                output_dir=output_dir,
             )
-
-            # Create the Next.js page structure
-            # Convert module name to path (e.g., "package.module.submodule" -> "package/module/submodule")
-            page_path = output_dir / module_name.replace(".", "/")
-            page_path.mkdir(parents=True, exist_ok=True)
-
-            # Write the content to page.tsx
-            output_file = page_path / "page.tsx"
-            output_file.write_text(content)
         except Exception:
             logger.exception("Error processing file %s", file_path)
