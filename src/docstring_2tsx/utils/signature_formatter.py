@@ -12,7 +12,7 @@ def get_signature_params(obj: type | Callable[..., Any]) -> list[str]:
         obj: Class or function to get parameters from
 
     Returns:
-        List of parameter names
+        list[str]: List of parameter names
     """
     try:
         sig = inspect.signature(obj)
@@ -32,7 +32,7 @@ def format_signature(obj: type | Callable[..., Any]) -> str:
         obj: Class or function to format signature for
 
     Returns:
-        Formatted signature string
+        str: Formatted signature string
     """
     try:
         sig = inspect.signature(obj)
