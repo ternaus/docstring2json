@@ -2,10 +2,12 @@
 
 import inspect
 from typing import Any, Callable
+import json
+from unittest.mock import patch
 
 import pytest
 
-from docstring_2tsx.converter import class_to_data
+from docstring_2tsx.converter import class_to_data, serialize_module_data, process_member
 
 
 class SimpleClass:
@@ -175,3 +177,81 @@ def test_class_to_data_source_code() -> None:
     assert "source_code" in result
     assert "def simple_function" in result["source_code"]
     assert "return f\"{param1}{param2}\"" in result["source_code"]
+
+
+def test_serialize_module_data_handles_normal_data():
+    """Test that serialize_module_data can handle normal JSON-serializable data."""
+    # Simple data that should serialize without issues
+    test_data = {
+        "moduleName": "test_module",
+        "docstring": "Test docstring",
+        "members": [{"name": "test_member", "type": "function"}],
+    }
+
+    result = serialize_module_data(test_data, "test_module")
+    parsed_result = json.loads(result)
+
+    # Check that the result is valid JSON and contains the expected data
+    assert parsed_result["moduleName"] == "test_module"
+    assert parsed_result["docstring"] == "Test docstring"
+    assert len(parsed_result["members"]) == 1
+    assert parsed_result["members"][0]["name"] == "test_member"
+
+
+def test_serialize_module_data_handles_unserializable_data():
+    """Test that serialize_module_data can handle unserializable data."""
+    # Create an object that can't be serialized to JSON
+    class UnserializableObject:
+        def __repr__(self):
+            return "Unserializable"
+
+    test_data = {
+        "moduleName": "test_module",
+        "docstring": "Test docstring",
+        "members": [{"obj": UnserializableObject()}],
+    }
+
+    # This should fall back to a simplified version
+    result = serialize_module_data(test_data, "test_module")
+
+    # Since we know the simplified version is valid JSON, we can parse it
+    try:
+        parsed_result = json.loads(result)
+        assert parsed_result["moduleName"] == "test_module"
+        assert parsed_result["docstring"] == "Error serializing module data"
+        assert parsed_result["members"] == []
+    except json.JSONDecodeError:
+        # If we get here, it's using the ultimate fallback which is a JS literal
+        assert "moduleName: 'test_module'" in result
+        assert "docstring: 'Error serializing module data'" in result
+        assert "members: []" in result
+
+
+def test_process_member_handles_normal_class():
+    """Test that process_member can handle a normal class."""
+    result = process_member(SimpleClass)
+
+    assert result is not None
+    assert result["name"] == "SimpleClass"
+    assert result["type"] == "class"
+    assert "signature" in result
+    assert "docstring" in result
+
+
+def test_process_member_handles_errors():
+    """Test that process_member returns None when processing fails."""
+    # Create a mock that raises an exception when processed
+    class ProblemClass:
+        __name__ = "ProblemClass"
+
+        def __signature__(self):
+            raise ValueError("Test error")
+
+    # Mock class_to_data to raise an exception
+    def mock_class_to_data(obj):
+        raise ValueError("Test error")
+
+    # Use patch to temporarily replace class_to_data
+    with patch("docstring_2tsx.converter.class_to_data", side_effect=mock_class_to_data):
+        result = process_member(ProblemClass)
+        assert result is None

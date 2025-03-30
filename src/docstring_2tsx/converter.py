@@ -191,6 +191,48 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
     return member_data
 
 
+def serialize_module_data(data: ComplexObject, module_name: str) -> str:
+    """Serialize module data to JSON with fallback handling.
+
+    Args:
+        data: The module data to serialize
+        module_name: The name of the module for fallback data
+
+    Returns:
+        str: JSON string representation of the data
+    """
+    try:
+        return json.dumps(data, indent=2)
+    except TypeError:
+        logger.exception("Error serializing data to JSON, data may contain non-serializable types")
+        fallback_data = {
+            "moduleName": module_name,
+            "docstring": "Error serializing module data",
+            "members": [],
+        }
+        try:
+            return json.dumps(fallback_data, indent=2)
+        except TypeError:
+            # Ultimate fallback - handle even if the mock json.dumps always raises an error
+            return f"{{ moduleName: '{module_name}', docstring: 'Error serializing module data', members: [] }}"
+
+
+def process_member(obj: type | Callable[..., Any]) -> dict[str, Any] | None:
+    """Process a class or function member to extract documentation.
+
+    Args:
+        obj: The class or function to process
+
+    Returns:
+        dict[str, Any] | None: The processed member data or None if processing failed
+    """
+    try:
+        return class_to_data(obj)
+    except Exception:
+        logger.exception("Failed to process member %s", obj.__name__)
+        return None
+
+
 def file_to_tsx(module: ModuleType, module_name: str) -> str:
     """Convert a module to a TSX document that uses imported components.
 
@@ -212,52 +254,23 @@ def file_to_tsx(module: ModuleType, module_name: str) -> str:
     classes, functions = collect_module_members(module)
     members_data: list[dict[str, Any]] = []
 
-    # Process all classes
+    # Process classes and functions using the helper
     for _name, class_obj in classes:
-        try:
-            member_data = class_to_data(class_obj)
+        member_data = process_member(class_obj)
+        if member_data:
             members_data.append(member_data)
-        except Exception:
-            logger.exception("Failed to process class %s", class_obj.__name__)
 
-    # Process all functions
     for _name, func_obj in functions:
-        try:
-            member_data = class_to_data(func_obj)
+        member_data = process_member(func_obj)
+        if member_data:
             members_data.append(member_data)
-        except Exception:
-            logger.exception("Failed to process function %s", func_obj.__name__)
 
     # Add members to module data
     module_data["members"] = members_data  # type: ignore[assignment]
 
-    # Sanitize data and convert to JSON
+    # Sanitize data and convert to JSON using the helper
     sanitized_data = sanitize_for_json(module_data)
-
-    try:
-        module_data_str = json.dumps(sanitized_data, indent=2)
-    except TypeError:
-        logger.exception("Error serializing data to JSON, data may contain non-serializable types")
-        # Fall back to a simplified version
-        fallback_data = {
-            "moduleName": module_name,
-            "docstring": "Error serializing module data",
-            "members": [],
-        }
-        try:
-            module_data_str = json.dumps(fallback_data, indent=2)
-        except TypeError:
-            # Ultimate fallback - handle even if the mock json.dumps always raises an error
-            return (
-                f"import {{ ModuleDoc }} from '{COMPONENTS_IMPORT_PATH}';\n\n"
-                "// Error serializing module data\n"
-                "const moduleData = { moduleName: '"
-                + module_name
-                + "', docstring: 'Error serializing module data', members: [] };\n\n"
-                "export default function Page() {\n"
-                "  return <ModuleDoc {...moduleData} />;\n"
-                "}\n"
-            )
+    module_data_str = serialize_module_data(sanitized_data, module_name)
 
     # Create the page.tsx file content
     components = "ModuleDoc"
