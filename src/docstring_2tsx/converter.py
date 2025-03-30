@@ -43,9 +43,7 @@ def get_source_line(obj: type | Callable[..., Any]) -> int:
         Line number in the source file
     """
     try:
-        if hasattr(obj, "__code__"):
-            return obj.__code__.co_firstlineno
-        return 1
+        return obj.__code__.co_firstlineno if hasattr(obj, "__code__") else 1
     except AttributeError:
         return 1
 

@@ -58,9 +58,36 @@ class PackageConfig:
     progress_desc: str
 
 
+def _walk_package(package: ModuleType, package_name: str, exclude_private: bool) -> list[tuple[ModuleType, str]]:
+    """Recursively walk through a package to find all modules.
+
+    Args:
+        package: Python package to walk through
+        package_name: Name of the package
+        exclude_private: Whether to exclude private modules
+
+    Returns:
+        List of (module, module_name) tuples
+    """
+    found: list[tuple[ModuleType, str]] = []
+    if not hasattr(package, "__path__"):
+        return found
+    for _, module_name, is_pkg in pkgutil.iter_modules(package.__path__, f"{package_name}."):
+        if exclude_private and any(part.startswith("_") for part in module_name.split(".")):
+            continue
+        try:
+            module = importlib.import_module(module_name)
+        except (ImportError, AttributeError):
+            continue
+        if hasattr(module, "__file__") and module.__file__:
+            found.append((module, module_name))
+        if is_pkg:
+            found.extend(_walk_package(module, module_name, exclude_private))
+    return found
+
+
 def collect_package_modules(
     package: ModuleType,
-    package_name: str = "",
     *,
     exclude_private: bool = False,
 ) -> list[tuple[ModuleType, str]]:
@@ -68,48 +95,16 @@ def collect_package_modules(
 
     Args:
         package: Python package
-        package_name: Name of the package
         exclude_private: Whether to exclude private modules
 
     Returns:
         list: List of (module, module_name) tuples
     """
-    modules_to_process: list[tuple[ModuleType, str]] = []
-
-    # Process the root module
+    modules: list[tuple[ModuleType, str]] = []
     if hasattr(package, "__file__") and package.__file__:
-        modules_to_process.append((package, package.__name__))
-
-    # Find all submodules recursively using a queue
-    modules_to_explore = [(package, package_name)]
-    explored_modules = set()
-
-    while modules_to_explore:
-        current_package, current_name = modules_to_explore.pop(0)
-        if current_name in explored_modules:
-            continue
-
-        explored_modules.add(current_name)
-
-        if not hasattr(current_package, "__path__"):
-            continue
-
-        for _module_finder, module_name, is_pkg in pkgutil.iter_modules(current_package.__path__, f"{current_name}."):
-            if exclude_private and any(part.startswith("_") for part in module_name.split(".")):
-                continue
-
-            try:
-                module = importlib.import_module(module_name)
-                if hasattr(module, "__file__") and module.__file__:
-                    modules_to_process.append((module, module_name))
-
-                    # If this is a package, add it to the exploration queue
-                    if is_pkg:
-                        modules_to_explore.append((module, module_name))
-            except (ImportError, AttributeError):
-                pass
-
-    return modules_to_process
+        modules.append((package, package.__name__))
+    modules.extend(_walk_package(package, package.__name__, exclude_private))
+    return modules
 
 
 def group_modules_by_file(
@@ -278,7 +273,6 @@ def package_to_structure(config: PackageConfig) -> None:
         # Collect all modules in the package
         modules = collect_package_modules(
             package,
-            config.package_name,
             exclude_private=config.exclude_private,
         )
 
