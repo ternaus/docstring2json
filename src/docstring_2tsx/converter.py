@@ -117,6 +117,19 @@ def sanitize_for_json(data: ComplexObject) -> JSONSerializable:
     return str(data)
 
 
+def get_class_ancestors(cls: type) -> list[str]:
+    """Get the list of ancestor class names for a given class.
+
+    Args:
+        cls: The class to get ancestors for
+
+    Returns:
+        list[str]: List of ancestor class names, excluding 'object'
+    """
+    # Get all base classes in Method Resolution Order (MRO), excluding 'object'
+    return [base.__name__ for base in cls.__mro__[1:] if base.__name__ != "object"]
+
+
 def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
     """Convert class or function to structured data format.
 
@@ -188,6 +201,9 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
             if signature_data.return_type
             else None
         )
+    # Add ancestors list only for classes
+    else:
+        member_data["ancestors"] = get_class_ancestors(obj)
 
     # Add source code if available
     if source_code:

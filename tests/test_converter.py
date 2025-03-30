@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from docstring_2tsx.converter import class_to_data, serialize_module_data, process_member
+from docstring_2tsx.converter import class_to_data, serialize_module_data, process_member, get_class_ancestors
 
 
 class SimpleClass:
@@ -70,6 +70,27 @@ def function_without_docs(param):
     return param
 
 
+# Create a class hierarchy for testing ancestors
+class BaseClass:
+    """Base class for testing ancestry."""
+    pass
+
+
+class MiddleClass(BaseClass):
+    """Middle class that inherits from BaseClass."""
+    pass
+
+
+class ChildClass(MiddleClass):
+    """Child class that inherits from MiddleClass."""
+    pass
+
+
+class MultipleInheritance(BaseClass, SimpleClass):
+    """Class with multiple inheritance."""
+    pass
+
+
 @pytest.mark.parametrize(
     "test_obj,expected_fields",
     [
@@ -79,6 +100,7 @@ def function_without_docs(param):
                 "name": "SimpleClass",
                 "type": "class",
                 "docstring": {"Description": "A simple test class with docstring."},
+                "ancestors": [],
             },
         ),
         (
@@ -95,6 +117,7 @@ def function_without_docs(param):
                 "name": "ClassWithoutDocs",
                 "type": "class",
                 "docstring": {},
+                "ancestors": [],
             },
         ),
         (
@@ -103,6 +126,24 @@ def function_without_docs(param):
                 "name": "function_without_docs",
                 "type": "function",
                 "docstring": {},
+            },
+        ),
+        (
+            ChildClass,
+            {
+                "name": "ChildClass",
+                "type": "class",
+                "docstring": {"Description": "Child class that inherits from MiddleClass."},
+                "ancestors": ["MiddleClass", "BaseClass"],
+            },
+        ),
+        (
+            MultipleInheritance,
+            {
+                "name": "MultipleInheritance",
+                "type": "class",
+                "docstring": {"Description": "Class with multiple inheritance."},
+                "ancestors": ["BaseClass", "SimpleClass"],
             },
         ),
     ],
@@ -117,8 +158,21 @@ def test_class_to_data_basic_fields(test_obj: Any, expected_fields: dict[str, An
         if key == "docstring" and "Description" in value:
             assert "Description" in result[key]
             assert value["Description"] in result[key]["Description"]
+        elif key == "ancestors":
+            # For ancestors, check each expected ancestor is present
+            # Order might vary depending on MRO, so we don't check exact equality
+            for ancestor in value:
+                assert ancestor in result[key]
+            # Ensure the length is the same (no extra ancestors)
+            assert len(result[key]) == len(value)
         else:
             assert result[key] == value
+
+    # Check for presence/absence of ancestors based on type
+    if result["type"] == "class":
+        assert "ancestors" in result
+    else:
+        assert "ancestors" not in result
 
     # Check all required fields exist
     assert "signature" in result
@@ -132,6 +186,9 @@ def test_class_to_data_basic_fields(test_obj: Any, expected_fields: dict[str, An
         (simple_function, 2),  # param1 and param2
         (ClassWithoutDocs, 0),  # No documented params
         (function_without_docs, 1),  # One param but not documented
+        (ChildClass, 0),  # No custom __init__
+        (MultipleInheritance, 2),  # Inherits SimpleClass's __init__ with 2 params
+        (BaseClass, 0),  # No custom __init__
     ],
 )
 def test_class_to_data_params(test_obj: Any, expected_param_count: int) -> None:
@@ -158,6 +215,10 @@ def test_class_to_data_params(test_obj: Any, expected_param_count: int) -> None:
         (simple_function, ["Examples", "Returns"]),
         (ClassWithoutDocs, []),
         (function_without_docs, []),
+        (BaseClass, []),
+        (MiddleClass, []),
+        (ChildClass, []),
+        (MultipleInheritance, []),
     ],
 )
 def test_class_to_data_sections(test_obj: Any, expected_sections: list[str]) -> None:
@@ -255,3 +316,28 @@ def test_process_member_handles_errors():
     with patch("docstring_2tsx.converter.class_to_data", side_effect=mock_class_to_data):
         result = process_member(ProblemClass)
         assert result is None
+
+
+def test_get_class_ancestors():
+    """Test the get_class_ancestors function."""
+    # Basic inheritance
+    assert get_class_ancestors(BaseClass) == []  # No ancestors except object
+    assert get_class_ancestors(MiddleClass) == ["BaseClass"]
+    assert get_class_ancestors(ChildClass) == ["MiddleClass", "BaseClass"]
+
+    # Multiple inheritance
+    ancestors = get_class_ancestors(MultipleInheritance)
+    assert "BaseClass" in ancestors
+    assert "SimpleClass" in ancestors
+
+
+def test_class_to_data_includes_ancestors():
+    """Test that class_to_data includes ancestor information for classes."""
+    # Test with a class that has ancestors
+    result = class_to_data(ChildClass)
+    assert "ancestors" in result
+    assert result["ancestors"] == ["MiddleClass", "BaseClass"]
+
+    # Test with a function (should not have ancestors)
+    result = class_to_data(simple_function)
+    assert "ancestors" not in result
