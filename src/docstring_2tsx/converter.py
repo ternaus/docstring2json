@@ -98,18 +98,6 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
         logger.exception("Error parsing docstring for %s", docstring)
         parsed = {}
 
-    # Get description
-    description = process_description(parsed)
-
-    # Get parameters data
-    params_data = build_params_data(params, parsed)
-
-    # Process other sections (returns, raises, etc.)
-    sections: list[dict[str, Any]] = []
-    for section, content in parsed.items():
-        if section not in ["Description", "Args"] and (section_data := format_section_data(section, content)):
-            sections.append(section_data)
-
     # Create the data structure
     member_data: dict[str, Any] = {
         "name": obj_name,
