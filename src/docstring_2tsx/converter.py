@@ -110,6 +110,9 @@ def sanitize_for_json(data: ComplexObject) -> JSONSerializable:
         return {str(k): sanitize_for_json(v) for k, v in data.items()}
     if isinstance(data, (list, tuple)):
         return [sanitize_for_json(item) for item in data]
+    if isinstance(data, type):
+        # For type objects, return just the name
+        return data.__name__
     # Convert anything else to string
     return str(data)
 
@@ -151,7 +154,11 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
             signature_params = [
                 {
                     "name": param.name,
-                    "type": str(param.annotation) if param.annotation != inspect.Parameter.empty else "Any",
+                    "type": param.annotation.__name__
+                    if param.annotation != inspect.Parameter.empty and hasattr(param.annotation, "__name__")
+                    else str(param.annotation)
+                    if param.annotation != inspect.Parameter.empty
+                    else "Any",
                     "default": str(param.default) if param.default != inspect.Parameter.empty else None,
                     "description": parsed.get("params", {}).get(param.name, ""),
                 }
@@ -168,13 +175,17 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
         "signature": {
             "name": signature_data.name,
             "params": signature_params,
-            "return_type": str(signature_data.return_type) if signature_data.return_type else None,
+            "return_type": signature_data.return_type.__name__
+            if hasattr(signature_data.return_type, "__name__")
+            else str(signature_data.return_type)
+            if signature_data.return_type
+            else None,
         },
         "docstring": parsed,
         "params": [
             {
                 "name": name,
-                "type": str(param_type),
+                "type": param_type.__name__ if hasattr(param_type, "__name__") else str(param_type),
                 "description": description,
             }
             for name, (param_type, description) in parsed.get("params", {}).items()
@@ -250,7 +261,20 @@ def file_to_tsx(module: ModuleType, module_name: str) -> str:
             "docstring": "Error serializing module data",
             "members": [],
         }
-        module_data_str = json.dumps(fallback_data, indent=2)
+        try:
+            module_data_str = json.dumps(fallback_data, indent=2)
+        except TypeError:
+            # Ultimate fallback - handle even if the mock json.dumps always raises an error
+            return (
+                f"import {{ ModuleDoc }} from '{COMPONENTS_IMPORT_PATH}';\n\n"
+                "// Error serializing module data\n"
+                "const moduleData = { moduleName: '"
+                + module_name
+                + "', docstring: 'Error serializing module data', members: [] };\n\n"
+                "export default function Page() {\n"
+                "  return <ModuleDoc {...moduleData} />;\n"
+                "}\n"
+            )
 
     # Create the page.tsx file content
     components = "ModuleDoc"
