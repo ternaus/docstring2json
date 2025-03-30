@@ -43,7 +43,7 @@ classifiers = [
 ]
 
 dependencies = [
-  "google-docstring-parser",
+  "google-docstring-parser>=0.0.7",
   "tqdm>=4.65",
 ]
 
