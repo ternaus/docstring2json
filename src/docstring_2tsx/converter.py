@@ -4,22 +4,15 @@ This module provides functions to convert Python classes and functions with Goog
 docstrings into TSX documentation components that use imported React components.
 """
 
+import inspect
 import json
 import logging
 from collections.abc import Callable
-from pathlib import Path
 from types import ModuleType
 from typing import Any, TypeVar
 
 from google_docstring_parser import parse_google_docstring
 
-from utils.shared import (
-    collect_module_members,
-    collect_package_modules,
-    group_modules_by_file,
-    has_documentable_members,
-    process_module_file,
-)
 from utils.signature_formatter import (
     format_signature,
     get_signature_params,
@@ -29,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 # Path to import components from, could be made configurable
 COMPONENTS_IMPORT_PATH = "@/components/DocComponents"
+
+# Error messages
+ERR_EXPECTED_DICT = "Expected dict result from convert_to_serializable"
 
 T = TypeVar("T")
 
@@ -65,6 +61,26 @@ def get_source_code(obj: type | Callable[..., Any]) -> str | None:
         return None
 
 
+def convert_to_serializable(
+    obj: str | float | bool | None | dict[str, Any] | list[Any],
+) -> str | int | float | bool | None | dict[str, Any] | list[Any]:
+    """Convert objects to JSON serializable format.
+
+    Args:
+        obj: Object to convert
+
+    Returns:
+        str | int | float | bool | None | dict[str, Any] | list[Any]: JSON serializable object
+    """
+    if isinstance(obj, (str, int, float, bool, type(None))):
+        return obj
+    if isinstance(obj, dict):
+        return {str(k): convert_to_serializable(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [convert_to_serializable(item) for item in obj]
+    return str(obj)
+
+
 def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
     """Convert class or function to structured data format.
 
@@ -80,10 +96,8 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
     # Get object name and parameters
     obj_name = obj.__name__
     params = get_signature_params(obj)
-
     # Get signature data
     signature_data = format_signature(obj, params)
-
     # Get source code and line number
     source_code = get_source_code(obj)
     source_line = get_source_line(obj)
@@ -102,14 +116,7 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
         "type": "class" if isinstance(obj, type) else "function",
         "signature": {
             "name": signature_data.name,
-            "params": [
-                {
-                    "name": p.name,
-                    "type": p.type,
-                    "default": p.default,
-                }
-                for p in signature_data.params
-            ],
+            "params": signature_data.params,
             "return_type": signature_data.return_type,
         },
         "source_line": source_line,
@@ -120,7 +127,11 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
     if source_code:
         member_data["source_code"] = source_code
 
-    return member_data
+    # Convert to serializable format
+    result = convert_to_serializable(member_data)
+    if not isinstance(result, dict):
+        raise TypeError(ERR_EXPECTED_DICT)
+    return result
 
 
 def file_to_tsx(module: ModuleType, module_name: str) -> str:
@@ -134,14 +145,16 @@ def file_to_tsx(module: ModuleType, module_name: str) -> str:
         str: The TSX content
     """
     # Collect module members
-    classes, functions = collect_module_members(module)
-
-    # Process classes and functions to get their data
     members_data: list[dict[str, Any]] = []
-    for _name, obj in sorted(classes + functions):
-        # Convert to data structure
-        member_data = class_to_data(obj)
-        members_data.append(member_data)
+    for name, obj in inspect.getmembers(module):
+        # Skip private members and imported objects
+        if name.startswith("_") or inspect.getmodule(obj) != inspect.getmodule(module):
+            continue
+
+        if inspect.isclass(obj) or inspect.isfunction(obj):
+            # Convert to data structure
+            member_data = class_to_data(obj)
+            members_data.append(member_data)
 
     # Parse module-level docstring
     module_docstring = module.__doc__ or ""
@@ -160,7 +173,12 @@ def file_to_tsx(module: ModuleType, module_name: str) -> str:
         }
 
     # JSON representation of the data (with indentation for readability)
-    module_data_str = json.dumps(module_data, indent=2)
+    try:
+        module_data_str = json.dumps(module_data, indent=2)
+    except TypeError:
+        logger.exception("Failed to serialize module data")
+        logger.exception("Module data: %s", module_data)
+        raise
 
     # Create the page.tsx file content
     components = "ModuleDoc"
@@ -172,37 +190,3 @@ def file_to_tsx(module: ModuleType, module_name: str) -> str:
         "  return <ModuleDoc {...moduleData} />;\n"
         "}\n"
     )
-
-
-def package_to_tsx_files(
-    package: ModuleType,
-    output_dir: Path,
-) -> None:
-    """Convert a package to TSX files.
-
-    Args:
-        package: Python package
-        output_dir: Directory to write TSX files
-    """
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Collect all modules in the package
-    modules = collect_package_modules(package)
-
-    # Group modules by file
-    module_groups = group_modules_by_file(modules)
-
-    # Process each file
-    for file_path, file_modules in module_groups.items():
-        if not has_documentable_members(file_modules[0][1]):
-            continue
-
-        try:
-            process_module_file(
-                file_path,
-                file_modules,
-                converter_func=file_to_tsx,
-                output_dir=output_dir,
-            )
-        except Exception:
-            logger.exception("Error processing file %s", file_path)

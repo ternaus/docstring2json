@@ -11,3 +11,4 @@ alwaysApply: true
 - We use logging and not print statements
 - For working with typescript we use yarn, not npm
 - To check syntax we run: pre-commit run --all-files after every change that you proposed
+- We prefer using pathlib over os.path

@@ -114,6 +114,8 @@ format.skip-magic-trailing-comma = false
 lint.select = [ "ALL" ]
 
 lint.ignore = [
+  "E402",
+  "EM101",
   # Allow empty docstrings - we've addressed this with proper docstrings
   "EM102",
   # Allow boolean positional parameter with default value - we've addressed this with keyword-only parameters
