@@ -8,14 +8,11 @@ import json
 import logging
 from collections.abc import Callable
 from pathlib import Path
+from types import ModuleType
+from typing import Any, TypeVar
 
 from google_docstring_parser import parse_google_docstring
 
-from docstring_2tsx.processor import (
-    build_params_data,
-    format_section_data,
-    process_description,
-)
 from utils.shared import (
     collect_module_members,
     collect_package_modules,
@@ -33,8 +30,10 @@ logger = logging.getLogger(__name__)
 # Path to import components from, could be made configurable
 COMPONENTS_IMPORT_PATH = "@/components/DocComponents"
 
+T = TypeVar("T")
 
-def get_source_line(obj: type | Callable) -> int:
+
+def get_source_line(obj: type | Callable[..., Any]) -> int:
     """Get the source line number for a class or function.
 
     Args:
@@ -44,12 +43,12 @@ def get_source_line(obj: type | Callable) -> int:
         Line number in the source file
     """
     try:
-        return obj.__code__.co_firstlineno
+        return obj.__code__.co_firstlineno if hasattr(obj, "__code__") else 1
     except AttributeError:
         return 1
 
 
-def get_source_code(obj: type | Callable) -> str | None:
+def get_source_code(obj: type | Callable[..., Any]) -> str | None:
     """Get source code for a class or function.
 
     Args:
@@ -66,7 +65,7 @@ def get_source_code(obj: type | Callable) -> str | None:
         return None
 
 
-def class_to_data(obj: type | Callable) -> dict:
+def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
     """Convert class or function to structured data format.
 
     This function extracts documentation data for a class or function from
@@ -97,20 +96,8 @@ def class_to_data(obj: type | Callable) -> dict:
         logger.exception("Error parsing docstring for %s", docstring)
         parsed = {}
 
-    # Get description
-    description = process_description(parsed)
-
-    # Get parameters data
-    params_data = build_params_data(params, parsed)
-
-    # Process other sections (returns, raises, etc.)
-    sections = []
-    for section, content in parsed.items():
-        if section not in ["Description", "Args"] and (section_data := format_section_data(section, content)):
-            sections.append(section_data)
-
     # Create the data structure
-    member_data = {
+    member_data: dict[str, Any] = {
         "name": obj_name,
         "type": "class" if isinstance(obj, type) else "function",
         "signature": {
@@ -120,29 +107,23 @@ def class_to_data(obj: type | Callable) -> dict:
                     "name": p.name,
                     "type": p.type,
                     "default": p.default,
-                    "description": p.description,
                 }
                 for p in signature_data.params
             ],
             "return_type": signature_data.return_type,
         },
         "source_line": source_line,
+        "docstring": parsed,  # Pass raw parsed docstring to React
     }
 
-    # Add optional fields
-    if description:
-        member_data["description"] = description
-    if params_data:
-        member_data["params"] = params_data
-    if sections:
-        member_data["sections"] = sections
+    # Add source code if available
     if source_code:
         member_data["source_code"] = source_code
 
     return member_data
 
 
-def file_to_tsx(module: object, module_name: str) -> str:
+def file_to_tsx(module: ModuleType, module_name: str) -> str:
     """Convert a module to a TSX document that uses imported components.
 
     Args:
@@ -156,7 +137,7 @@ def file_to_tsx(module: object, module_name: str) -> str:
     classes, functions = collect_module_members(module)
 
     # Process classes and functions to get their data
-    members_data = []
+    members_data: list[dict[str, Any]] = []
     for _name, obj in sorted(classes + functions):
         # Convert to data structure
         member_data = class_to_data(obj)
@@ -165,18 +146,18 @@ def file_to_tsx(module: object, module_name: str) -> str:
     # Parse module-level docstring
     module_docstring = module.__doc__ or ""
     try:
-        parsed_module_doc = parse_google_docstring(module_docstring)
-        module_description = process_description(parsed_module_doc)
+        module_data = {
+            "moduleName": module_name,
+            "docstring": parse_google_docstring(module_docstring),
+            "members": members_data,
+        }
     except Exception:
         logger.exception("Error parsing module docstring for %s", module_name)
-        module_description = None
-
-    # Create module data
-    module_data = {
-        "moduleName": module_name,
-        "description": module_description,
-        "members": members_data,
-    }
+        module_data = {
+            "moduleName": module_name,
+            "docstring": {},
+            "members": members_data,
+        }
 
     # JSON representation of the data (with indentation for readability)
     module_data_str = json.dumps(module_data, indent=2)
@@ -194,7 +175,7 @@ def file_to_tsx(module: object, module_name: str) -> str:
 
 
 def package_to_tsx_files(
-    package: object,
+    package: ModuleType,
     output_dir: Path,
 ) -> None:
     """Convert a package to TSX files.

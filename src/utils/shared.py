@@ -8,14 +8,17 @@ import inspect
 import logging
 import pkgutil
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from types import FunctionType, ModuleType
+from typing import Any, TypeVar
 
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 
 def normalize_anchor_id(module_name: str, name: str) -> str:
@@ -33,14 +36,14 @@ def normalize_anchor_id(module_name: str, name: str) -> str:
 
 @dataclass
 class ModuleFileConfig:
-    """Configuration for processing a module file."""
+    """Configuration for module file processing."""
 
     file_path: str
-    modules: list[tuple[object, str]]
+    modules: Sequence[tuple[ModuleType, str]]
     output_dir: Path
-    exclude_private: bool
-    converter_func: Callable[[Any, str | None, str], str]
     output_extension: str
+    converter_func: Callable[[ModuleType, str], str]
+    exclude_private: bool = False
 
 
 @dataclass
@@ -50,77 +53,72 @@ class PackageConfig:
     package_name: str
     output_dir: Path
     exclude_private: bool
-    converter_func: Callable[[Any, str | None, str], str]
+    converter_func: Callable[[ModuleType, str], str]
     output_extension: str
     progress_desc: str
 
 
-def collect_package_modules(
-    package: object,
-    package_name: str,
-    *,
-    exclude_private: bool,
-) -> list[tuple[object, str]]:
-    """Collect all modules in a package.
+def _walk_package(package: ModuleType, package_name: str, exclude_private: bool) -> list[tuple[ModuleType, str]]:
+    """Recursively walk through a package to find all modules.
 
     Args:
-        package (object): The package object
-        package_name (str): Name of the package
-        exclude_private (bool): Whether to exclude private modules
+        package: Python package to walk through
+        package_name: Name of the package
+        exclude_private: Whether to exclude private modules
+
+    Returns:
+        List of (module, module_name) tuples
+    """
+    found: list[tuple[ModuleType, str]] = []
+    if not hasattr(package, "__path__"):
+        return found
+    for _, module_name, is_pkg in pkgutil.iter_modules(package.__path__, f"{package_name}."):
+        if exclude_private and any(part.startswith("_") for part in module_name.split(".")):
+            continue
+        try:
+            module = importlib.import_module(module_name)
+        except (ImportError, AttributeError):
+            continue
+        if hasattr(module, "__file__") and module.__file__:
+            found.append((module, module_name))
+        if is_pkg:
+            found.extend(_walk_package(module, module_name, exclude_private))
+    return found
+
+
+def collect_package_modules(
+    package: ModuleType,
+    *,
+    exclude_private: bool = False,
+) -> list[tuple[ModuleType, str]]:
+    """Collect all modules in a package recursively.
+
+    Args:
+        package: Python package
+        exclude_private: Whether to exclude private modules
 
     Returns:
         list: List of (module, module_name) tuples
     """
-    modules_to_process = []
-
-    # Process the root module
+    modules: list[tuple[ModuleType, str]] = []
     if hasattr(package, "__file__") and package.__file__:
-        modules_to_process.append((package, package.__name__))
-
-    # Find all submodules recursively using a queue
-    modules_to_explore = [(package, package_name)]
-    explored_modules = set()
-
-    while modules_to_explore:
-        current_package, current_name = modules_to_explore.pop(0)
-        if current_name in explored_modules:
-            continue
-
-        explored_modules.add(current_name)
-
-        if not hasattr(current_package, "__path__"):
-            continue
-
-        for _module_finder, module_name, is_pkg in pkgutil.iter_modules(current_package.__path__, f"{current_name}."):
-            if exclude_private and any(part.startswith("_") for part in module_name.split(".")):
-                continue
-
-            try:
-                module = importlib.import_module(module_name)
-                if hasattr(module, "__file__") and module.__file__:
-                    modules_to_process.append((module, module_name))
-
-                    # If this is a package, add it to the exploration queue
-                    if is_pkg:
-                        modules_to_explore.append((module, module_name))
-            except (ImportError, AttributeError):
-                pass
-
-    return modules_to_process
+        modules.append((package, package.__name__))
+    modules.extend(_walk_package(package, package.__name__, exclude_private))
+    return modules
 
 
 def group_modules_by_file(
-    modules: list[tuple[object, str]],
-) -> dict[str, list[tuple[object, str]]]:
+    modules: Sequence[tuple[ModuleType, str]],
+) -> dict[str, list[tuple[ModuleType, str]]]:
     """Group modules by their file path.
 
     Args:
-        modules (list): List of (module, module_name) tuples
+        modules: List of (module, module_name) tuples
 
     Returns:
-        dict: Dictionary mapping file paths to lists of (module, module_name) tuples
+        Dictionary mapping file paths to lists of (module, module_name) tuples
     """
-    file_to_modules = defaultdict(list)
+    file_to_modules: dict[str, list[tuple[ModuleType, str]]] = defaultdict(list)
 
     for module, module_name in modules:
         if hasattr(module, "__file__") and module.__file__:
@@ -130,15 +128,15 @@ def group_modules_by_file(
 
 
 def has_documentable_members(
-    module: object,
+    module: ModuleType,
     *,
     exclude_private: bool,
 ) -> bool:
     """Check if a module has documentable members.
 
     Args:
-        module (object): Module to check
-        exclude_private (bool): Whether to exclude private members
+        module: Module to check
+        exclude_private: Whether to exclude private members
 
     Returns:
         bool: True if the module has documentable members
@@ -161,7 +159,7 @@ def has_documentable_members(
     return False
 
 
-def collect_module_members(module: object) -> tuple[list[tuple[str, object]], list[tuple[str, object]]]:
+def collect_module_members(module: ModuleType) -> tuple[list[tuple[str, type[Any]]], list[tuple[str, FunctionType]]]:
     """Collect classes and functions from a module.
 
     Args:
@@ -170,8 +168,8 @@ def collect_module_members(module: object) -> tuple[list[tuple[str, object]], li
     Returns:
         Tuple of (classes, functions) where each is a list of (name, object) pairs
     """
-    classes = []
-    functions = []
+    classes: list[tuple[str, type[Any]]] = []
+    functions: list[tuple[str, FunctionType]] = []
 
     for name, obj in inspect.getmembers(module):
         # Skip private members
@@ -211,8 +209,8 @@ def build_output_dir(config: ModuleFileConfig, module_name: str, file_name: str)
 
 def process_module_file(
     file_path: str,
-    modules: list[tuple[object, str]],
-    converter_func: Callable[[object, str], str],  # (module, module_name)
+    modules: Sequence[tuple[ModuleType, str]],
+    converter_func: Callable[[ModuleType, str], str],
     output_dir: Path,
     exclude_private: bool = False,
 ) -> bool:
@@ -275,7 +273,6 @@ def package_to_structure(config: PackageConfig) -> None:
         # Collect all modules in the package
         modules = collect_package_modules(
             package,
-            config.package_name,
             exclude_private=config.exclude_private,
         )
 

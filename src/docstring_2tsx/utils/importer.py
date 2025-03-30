@@ -14,8 +14,16 @@ class ModuleImportError(ImportError):
         Args:
             path: Path to the file that could not be imported
         """
-        super().__init__()
-        self.path = path
+        super().__init__(str(path))
+        self._path = path
+
+    def get_path(self) -> Path:
+        """Get the path to the file that could not be imported.
+
+        Returns:
+            Path to the file
+        """
+        return self._path
 
     def __str__(self) -> str:
         """Return a string representation of the error.
@@ -23,7 +31,7 @@ class ModuleImportError(ImportError):
         Returns:
             Error message with the file path
         """
-        return f"Could not import {self.path}"
+        return f"Could not import {self._path!s}"
 
 
 def import_module_from_file(file_path: Path) -> ModuleType:

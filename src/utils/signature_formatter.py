@@ -96,11 +96,11 @@ def _process_signature_params(signature: inspect.Signature, *, skip_self: bool =
     return params
 
 
-def get_signature_params(obj: type | Callable) -> list[Parameter]:
+def get_signature_params(obj: type | Callable[..., Any]) -> list[Parameter]:
     """Extract parameters from object signature.
 
     Args:
-        obj (Union[type, Callable]): Class or function to extract parameters from
+        obj: Class or function to extract parameters from
 
     Returns:
         List of Parameter objects containing name, type, default value
@@ -113,7 +113,11 @@ def get_signature_params(obj: type | Callable) -> list[Parameter]:
                 return []
 
             try:
-                signature = inspect.signature(obj.__init__)
+                # Get __init__ method from the class
+                init_method = inspect.getattr_static(obj, "__init__")
+                if not callable(init_method):
+                    return []
+                signature = inspect.signature(init_method)
                 return _process_signature_params(signature, skip_self=True)
             except (ValueError, TypeError):
                 # If __init__ is not found or has no signature, return empty list
@@ -131,7 +135,7 @@ def format_default_value(value: object) -> str:
     """Format default value for signature display.
 
     Args:
-        value (object): Parameter default value
+        value: Parameter default value
 
     Returns:
         Formatted string representation of the value
@@ -141,12 +145,12 @@ def format_default_value(value: object) -> str:
     return f"'{value}'" if isinstance(value, str) else str(value)
 
 
-def format_signature(obj: type | Callable, params: list[Parameter]) -> SignatureData:
+def format_signature(obj: type | Callable[..., Any], params: list[Parameter]) -> SignatureData:
     """Format object signature for documentation.
 
     Args:
-        obj (Union[type, Callable]): Class or function object
-        params (list[Parameter]): List of parameters
+        obj: Class or function object
+        params: List of parameters
 
     Returns:
         SignatureData object containing structured signature information

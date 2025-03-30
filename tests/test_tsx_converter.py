@@ -1,14 +1,11 @@
 """Tests for the TSX converter module."""
 
 import json
+from typing import Any
+
 import pytest
 
-from src.docstring_2tsx.processor import (
-    process_description,
-    build_params_data,
-    format_section_data,
-)
-from src.docstring_2tsx.converter import class_to_data, COMPONENTS_IMPORT_PATH
+from src.docstring_2tsx.converter import COMPONENTS_IMPORT_PATH, class_to_data
 from src.utils.signature_formatter import Parameter, SignatureData
 
 
@@ -72,160 +69,110 @@ def dummy_function(param1: str, param2: int = 42) -> str:
     return param1
 
 
-def test_process_description():
-    """Test the process_description function."""
-    # Test with a valid description
-    parsed = {"Description": "This is a test description"}
-    result = process_description(parsed)
-    assert result == "This is a test description"
-
-    # Test with no description
-    parsed = {}
-    result = process_description(parsed)
-    assert result is None
-
-
-def test_build_params_data():
-    """Test the build_params_data function."""
-    # Create some parameters
-    params = [
-        Parameter(name="param1", type="str", default=None, description=""),
-        Parameter(name="param2", type="int", default=42, description=""),
-    ]
-
-    # Create parsed docstring data
-    parsed = {
-        "Args": [
-            {"name": "param1", "type": "str", "description": "The first parameter"},
-            {"name": "param2", "type": "int", "description": "The second parameter with default value"},
-        ]
-    }
-
-    # Test with valid parameters and docstring
-    result = build_params_data(params, parsed)
-    assert len(result) == 2
-    assert result[0]["name"] == "param1"
-    assert result[0]["type"] == "str"
-    assert result[0]["description"] == "The first parameter"
-    assert result[1]["name"] == "param2"
-    assert result[1]["type"] == "int"
-    assert result[1]["description"] == "The second parameter with default value"
-
-    # Test with no parameters
-    result = build_params_data([], parsed)
-    assert result is None
-
-
-def test_format_section_data():
-    """Test the format_section_data function."""
-    # Test with Returns section
-
-    # Test with Example section
-    result = format_section_data("Example", ">>> result = test()\n>>> print(result)")
-    assert result is not None
-    assert result["title"] == "Example"
-    assert result["contentType"] == "code"
-    assert ">>> result = test()" in result["content"]
-
-    # Test with References section
-    references = [{"description": "Author", "source": "Book Title"}]
-    result = format_section_data("References", references)
-    assert result is not None
-    assert result["title"] == "References"
-    assert result["contentType"] == "reference"
-    assert result["content"] == references
-
-    # Test with empty content
-    result = format_section_data("Notes", "")
-    assert result is None
-
-
 def test_class_to_data():
     """Test the class_to_data function."""
     # Test with a class
     result = class_to_data(DummyClass)
 
+    # Check basic structure
+    assert isinstance(result, dict)
     assert result["name"] == "DummyClass"
     assert result["type"] == "class"
-    assert "signature" in result
-    assert isinstance(result["signature"], dict)
-    assert result["signature"]["name"] == "DummyClass"
-    assert "params" in result["signature"]
-    assert "description" in result
-    assert "params" in result
-    assert len(result["params"]) == 2
+
+    # Check signature
+    signature = result["signature"]
+    assert signature["name"] == "DummyClass"
+    assert len(signature["params"]) == 2
+    assert signature["params"][0]["name"] == "param1"
+    assert signature["params"][0]["type"] == "str"
+    assert signature["params"][1]["name"] == "param2"
+    assert signature["params"][1]["type"] == "int"
+    assert signature["params"][1]["default"] == "42"
+
+    # Check docstring
+    docstring = result["docstring"]
+    assert isinstance(docstring, dict)
+    assert "Description" in docstring
+    assert "Args" in docstring
+    assert "Returns" in docstring
+    assert "Example" in docstring
 
     # Test with a function
     result = class_to_data(dummy_function)
 
+    # Check basic structure
+    assert isinstance(result, dict)
     assert result["name"] == "dummy_function"
     assert result["type"] == "function"
-    assert "signature" in result
-    assert isinstance(result["signature"], dict)
-    assert result["signature"]["name"] == "dummy_function"
-    assert "params" in result["signature"]
-    assert result["signature"]["return_type"] == "str"
-    assert "description" in result
-    assert "params" in result
-    assert "sections" in result
-    assert any(section["title"] == "Returns" for section in result["sections"])
-    assert any(section["title"] == "Raises" for section in result["sections"])
-    assert any(section["title"] == "Example" for section in result["sections"])
+
+    # Check signature
+    signature = result["signature"]
+    assert signature["name"] == "dummy_function"
+    assert len(signature["params"]) == 2
+    assert signature["params"][0]["name"] == "param1"
+    assert signature["params"][0]["type"] == "str"
+    assert signature["params"][1]["name"] == "param2"
+    assert signature["params"][1]["type"] == "int"
+    assert signature["params"][1]["default"] == "42"
+    assert signature["return_type"] == "str"
+
+    # Check docstring
+    docstring = result["docstring"]
+    assert isinstance(docstring, dict)
+    assert "Description" in docstring
+    assert "Args" in docstring
+    assert "Returns" in docstring
+    assert "Raises" in docstring
+    assert "Example" in docstring
 
 
 def test_tsx_content_generation(monkeypatch):
-    """Test the generation of TSX content with a mocked module."""
-    # Mock data generation for a cleaner test
-    mock_data = {
-        "name": "TestModule",
-        "members": [
-            {
-                "name": "TestClass",
-                "type": "class",
-                "signature": {
-                    "name": "TestClass",
-                    "params": [
-                        {"name": "param1", "type": "str", "default": None, "description": "First parameter"},
-                        {"name": "param2", "type": "int", "default": 42, "description": "Second parameter"}
-                    ],
-                    "return_type": None
-                },
-                "description": "This is a test class",
-                "params": [
-                    {"name": "param1", "type": "str", "description": "First parameter"},
-                    {"name": "param2", "type": "int", "description": "Second parameter"},
-                ],
-            }
-        ],
-    }
-
-    # Import here to avoid circular import issues in the test
+    """Test TSX content generation."""
     from src.docstring_2tsx.converter import file_to_tsx
 
-    # Mock class_to_data to return our test data
+    class MockModule:
+        """Mock module for testing."""
+
+        __doc__ = "Module docstring"
+        __name__ = "test_module"
+
+    def mock_collect_module_members(*args, **kwargs):
+        return [("DummyClass", DummyClass)], [("dummy_function", dummy_function)]
+
     def mock_class_to_data(*args, **kwargs):
-        return mock_data["members"][0]
+        return {
+            "name": "test",
+            "type": "class",
+            "signature": {
+                "name": "test",
+                "params": [],
+                "return_type": None,
+            },
+            "docstring": {"Description": "Test description"},
+        }
 
+    monkeypatch.setattr(
+        "src.docstring_2tsx.converter.collect_module_members",
+        mock_collect_module_members,
+    )
     monkeypatch.setattr("src.docstring_2tsx.converter.class_to_data", mock_class_to_data)
-    monkeypatch.setattr("src.docstring_2tsx.converter.collect_module_members", lambda x: ([], [("test", DummyClass)]))
 
-    # Test the file_to_tsx function
-    result = file_to_tsx(None, "test_module")
+    result = file_to_tsx(MockModule, "test_module")
 
-    # Check that the result contains what we expect
-    assert f"import {{ ModuleDoc" in result
-    assert f"}} from '{COMPONENTS_IMPORT_PATH}';" in result
-    assert "const moduleData =" in result
+    # Check basic structure
+    assert isinstance(result, str)
+    assert result.startswith(f"import {{ ModuleDoc }} from '{COMPONENTS_IMPORT_PATH}'")
     assert "export default function Page()" in result
-    assert "return <ModuleDoc {...moduleData} />;" in result
 
-    # Parse the JSON data from the generated file
-    json_str = result.split("const moduleData =")[1].split(";\n\nexport")[0].strip()
-    data = json.loads(json_str)
+    # Parse the moduleData JSON
+    start = result.find("const moduleData = ") + len("const moduleData = ")
+    end = result.find(";\n\nexport")
+    module_data = json.loads(result[start:end])
 
-    # Verify the data structure
-    assert data["moduleName"] == "test_module"
-    assert len(data["members"]) == 1
-    assert data["members"][0]["name"] == "TestClass"
-    assert data["members"][0]["type"] == "class"
-    assert len(data["members"][0]["params"]) == 2
+    # Check module data structure
+    assert isinstance(module_data, dict)
+    assert module_data["moduleName"] == "test_module"
+    assert "docstring" in module_data
+    assert "members" in module_data
+    assert isinstance(module_data["members"], list)
+    assert len(module_data["members"]) == 2  # One for class, one for function
