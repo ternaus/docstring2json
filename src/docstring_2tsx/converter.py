@@ -7,7 +7,7 @@ docstrings into TSX documentation components that use imported React components.
 import inspect
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from types import ModuleType
 from typing import Any, TypeVar
 
@@ -26,7 +26,10 @@ COMPONENTS_IMPORT_PATH = "@/components/DocComponents"
 # Error messages
 ERR_EXPECTED_DICT = "Expected dict result from convert_to_serializable"
 
+# Type definitions
 T = TypeVar("T")
+JSONSerializable = str | int | float | bool | None | dict[str, "JSONSerializable"] | list["JSONSerializable"]
+ComplexObject = JSONSerializable | object | Mapping[str | object, Any] | Sequence[Any]
 
 # Type aliases to make signatures more readable
 ClassTuple = tuple[str, type]
@@ -92,24 +95,23 @@ def get_source_code(obj: type | Callable[..., Any]) -> str | None:
         return None
 
 
-def convert_to_serializable(
-    obj: str | float | bool | None | dict[str, Any] | list[Any],
-) -> str | int | float | bool | None | dict[str, Any] | list[Any]:
-    """Convert objects to JSON serializable format.
+def sanitize_for_json(data: ComplexObject) -> JSONSerializable:
+    """Convert complex Python objects to JSON-compatible types.
 
     Args:
-        obj: Object to convert
+        data: Data to convert to JSON-serializable format
 
     Returns:
-        str | int | float | bool | None | dict[str, Any] | list[Any]: JSON serializable object
+        JSONSerializable: JSON-compatible data
     """
-    if isinstance(obj, (str, int, float, bool, type(None))):
-        return obj
-    if isinstance(obj, dict):
-        return {str(k): convert_to_serializable(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [convert_to_serializable(item) for item in obj]
-    return str(obj)
+    if isinstance(data, (str, int, float, bool, type(None))):
+        return data
+    if isinstance(data, dict):
+        return {str(k): sanitize_for_json(v) for k, v in data.items()}
+    if isinstance(data, (list, tuple)):
+        return [sanitize_for_json(item) for item in data]
+    # Convert anything else to string
+    return str(data)
 
 
 def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
@@ -141,29 +143,38 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
         logger.exception("Error parsing docstring for %s", docstring)
         parsed = {}
 
+    # Try to extract parameter information, but handle cases where signature isn't available
+    signature_params = []
+    try:
+        if not isinstance(obj, type) or hasattr(obj, "__init__"):
+            sig = inspect.signature(obj)
+            signature_params = [
+                {
+                    "name": param.name,
+                    "type": str(param.annotation) if param.annotation != inspect.Parameter.empty else "Any",
+                    "default": str(param.default) if param.default != inspect.Parameter.empty else None,
+                    "description": parsed.get("params", {}).get(param.name, ""),
+                }
+                for param in sig.parameters.values()
+                if param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD)
+            ]
+    except (ValueError, TypeError):
+        logger.warning("Could not extract signature for %s", obj_name)
+
     # Create the data structure
     member_data: dict[str, Any] = {
         "name": obj_name,
         "type": "class" if isinstance(obj, type) else "function",
         "signature": {
             "name": signature_data.name,
-            "params": [
-                {
-                    "name": param.name,
-                    "type": param.annotation if param.annotation != inspect.Parameter.empty else "Any",
-                    "default": param.default if param.default != inspect.Parameter.empty else None,
-                    "description": parsed.get("params", {}).get(param.name, ""),
-                }
-                for param in inspect.signature(obj).parameters.values()
-                if param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD)
-            ],
-            "return_type": signature_data.return_type,
+            "params": signature_params,
+            "return_type": str(signature_data.return_type) if signature_data.return_type else None,
         },
-        "description": parsed.get("description", ""),
+        "docstring": parsed,
         "params": [
             {
                 "name": name,
-                "type": param_type,
+                "type": str(param_type),
                 "description": description,
             }
             for name, (param_type, description) in parsed.get("params", {}).items()
@@ -196,40 +207,50 @@ def file_to_tsx(module: ModuleType, module_name: str) -> str:
     Returns:
         str: The TSX content
     """
+    # Create basic module data structure with raw docstring
+    module_data = {
+        "moduleName": module_name,
+        "docstring": module.__doc__ or "",
+        "members": [],
+    }
+
     # Collect module members
     classes, functions = collect_module_members(module)
-
-    # Process classes and functions to get their data
     members_data: list[dict[str, Any]] = []
 
-    # Process all classes first, then all functions
+    # Process all classes
     for _name, class_obj in classes:
-        member_data = class_to_data(class_obj)
-        members_data.append(member_data)
+        try:
+            member_data = class_to_data(class_obj)
+            members_data.append(member_data)
+        except Exception:
+            logger.exception("Failed to process class %s", class_obj.__name__)
 
+    # Process all functions
     for _name, func_obj in functions:
-        member_data = class_to_data(func_obj)
-        members_data.append(member_data)
+        try:
+            member_data = class_to_data(func_obj)
+            members_data.append(member_data)
+        except Exception:
+            logger.exception("Failed to process function %s", func_obj.__name__)
 
-    # Parse module-level docstring
-    module_docstring = module.__doc__ or ""
+    # Add members to module data
+    module_data["members"] = members_data  # type: ignore[assignment]
+
+    # Sanitize data and convert to JSON
+    sanitized_data = sanitize_for_json(module_data)
+
     try:
-        parsed = parse_google_docstring(module_docstring)
-        module_data = {
+        module_data_str = json.dumps(sanitized_data, indent=2)
+    except TypeError:
+        logger.exception("Error serializing data to JSON, data may contain non-serializable types")
+        # Fall back to a simplified version
+        fallback_data = {
             "moduleName": module_name,
-            "description": parsed.get("description", ""),
-            "members": members_data,
+            "docstring": "Error serializing module data",
+            "members": [],
         }
-    except Exception:
-        logger.exception("Error parsing module docstring for %s", module_name)
-        module_data = {
-            "moduleName": module_name,
-            "description": "",
-            "members": members_data,
-        }
-
-    # JSON representation of the data (with indentation for readability)
-    module_data_str = json.dumps(module_data, indent=2)
+        module_data_str = json.dumps(fallback_data, indent=2)
 
     # Create the page.tsx file content
     components = "ModuleDoc"
