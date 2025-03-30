@@ -174,15 +174,20 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
         "signature": {
             "name": signature_data.name,
             "params": signature_params,
-            "return_type": signature_data.return_type.__name__
-            if hasattr(signature_data.return_type, "__name__")
-            else str(signature_data.return_type)
-            if signature_data.return_type
-            else None,
         },
         "docstring": parsed,
         "source_line": source_line,
     }
+
+    # Add return_type only for functions
+    if not isinstance(obj, type):
+        member_data["signature"]["return_type"] = (
+            signature_data.return_type.__name__
+            if hasattr(signature_data.return_type, "__name__")
+            else str(signature_data.return_type)
+            if signature_data.return_type
+            else None
+        )
 
     # Add source code if available
     if source_code:
