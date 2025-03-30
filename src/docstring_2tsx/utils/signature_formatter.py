@@ -2,9 +2,10 @@
 
 import inspect
 from collections.abc import Callable
+from typing import Any
 
 
-def get_signature_params(obj: type | Callable) -> list[str]:
+def get_signature_params(obj: type | Callable[..., Any]) -> list[str]:
     """Get parameter names from an object's signature.
 
     Args:
@@ -24,7 +25,7 @@ def get_signature_params(obj: type | Callable) -> list[str]:
         return []
 
 
-def format_signature(obj: type | Callable) -> str:
+def format_signature(obj: type | Callable[..., Any]) -> str:
     """Format object signature with parameter types.
 
     Args:

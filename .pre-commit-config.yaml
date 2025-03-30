@@ -41,17 +41,20 @@ repos:
     hooks:
       # Run the linter.
       - id: ruff
-        exclude: '__pycache__/'
+        exclude: '^tests/|__pycache__/'
         args: [ --fix ]
       # Run the formatter.
       - id: ruff-format
+        exclude: '^tests/'
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0
     hooks:
       - id: python-check-mock-methods
       - id: python-use-type-annotations
+        exclude: '^tests/'
       - id: python-check-blanket-noqa
       - id: python-use-type-annotations
+        exclude: '^tests/'
       - id: text-unicode-replacement-char
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.1
@@ -66,7 +69,8 @@ repos:
     rev: v1.15.0
     hooks:
       - id: mypy
-        files: ^albumentations/
+        files: \.py$
+        exclude: ^tests/
         additional_dependencies: [ types-PyYAML, types-setuptools, pydantic>=2.9]
         args:
           [ --config-file=pyproject.toml ]

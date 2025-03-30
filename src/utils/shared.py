@@ -8,14 +8,17 @@ import inspect
 import logging
 import pkgutil
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from types import FunctionType, ModuleType
+from typing import Any, TypeVar
 
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 
 def normalize_anchor_id(module_name: str, name: str) -> str:
@@ -33,14 +36,14 @@ def normalize_anchor_id(module_name: str, name: str) -> str:
 
 @dataclass
 class ModuleFileConfig:
-    """Configuration for processing a module file."""
+    """Configuration for module file processing."""
 
     file_path: str
-    modules: list[tuple[object, str]]
+    modules: Sequence[tuple[ModuleType, str]]
     output_dir: Path
-    exclude_private: bool
-    converter_func: Callable[[Any, str | None, str], str]
     output_extension: str
+    converter_func: Callable[[ModuleType, str], str]
+    exclude_private: bool = False
 
 
 @dataclass
@@ -50,28 +53,28 @@ class PackageConfig:
     package_name: str
     output_dir: Path
     exclude_private: bool
-    converter_func: Callable[[Any, str | None, str], str]
+    converter_func: Callable[[ModuleType, str], str]
     output_extension: str
     progress_desc: str
 
 
 def collect_package_modules(
-    package: object,
-    package_name: str,
+    package: ModuleType,
+    package_name: str = "",
     *,
-    exclude_private: bool,
-) -> list[tuple[object, str]]:
-    """Collect all modules in a package.
+    exclude_private: bool = False,
+) -> list[tuple[ModuleType, str]]:
+    """Collect all modules in a package recursively.
 
     Args:
-        package (object): The package object
-        package_name (str): Name of the package
-        exclude_private (bool): Whether to exclude private modules
+        package: Python package
+        package_name: Name of the package
+        exclude_private: Whether to exclude private modules
 
     Returns:
         list: List of (module, module_name) tuples
     """
-    modules_to_process = []
+    modules_to_process: list[tuple[ModuleType, str]] = []
 
     # Process the root module
     if hasattr(package, "__file__") and package.__file__:
@@ -110,17 +113,17 @@ def collect_package_modules(
 
 
 def group_modules_by_file(
-    modules: list[tuple[object, str]],
-) -> dict[str, list[tuple[object, str]]]:
+    modules: Sequence[tuple[ModuleType, str]],
+) -> dict[str, list[tuple[ModuleType, str]]]:
     """Group modules by their file path.
 
     Args:
-        modules (list): List of (module, module_name) tuples
+        modules: List of (module, module_name) tuples
 
     Returns:
-        dict: Dictionary mapping file paths to lists of (module, module_name) tuples
+        Dictionary mapping file paths to lists of (module, module_name) tuples
     """
-    file_to_modules = defaultdict(list)
+    file_to_modules: dict[str, list[tuple[ModuleType, str]]] = defaultdict(list)
 
     for module, module_name in modules:
         if hasattr(module, "__file__") and module.__file__:
@@ -130,15 +133,15 @@ def group_modules_by_file(
 
 
 def has_documentable_members(
-    module: object,
+    module: ModuleType,
     *,
     exclude_private: bool,
 ) -> bool:
     """Check if a module has documentable members.
 
     Args:
-        module (object): Module to check
-        exclude_private (bool): Whether to exclude private members
+        module: Module to check
+        exclude_private: Whether to exclude private members
 
     Returns:
         bool: True if the module has documentable members
@@ -161,7 +164,7 @@ def has_documentable_members(
     return False
 
 
-def collect_module_members(module: object) -> tuple[list[tuple[str, object]], list[tuple[str, object]]]:
+def collect_module_members(module: ModuleType) -> tuple[list[tuple[str, type[Any]]], list[tuple[str, FunctionType]]]:
     """Collect classes and functions from a module.
 
     Args:
@@ -170,8 +173,8 @@ def collect_module_members(module: object) -> tuple[list[tuple[str, object]], li
     Returns:
         Tuple of (classes, functions) where each is a list of (name, object) pairs
     """
-    classes = []
-    functions = []
+    classes: list[tuple[str, type[Any]]] = []
+    functions: list[tuple[str, FunctionType]] = []
 
     for name, obj in inspect.getmembers(module):
         # Skip private members
@@ -211,8 +214,8 @@ def build_output_dir(config: ModuleFileConfig, module_name: str, file_name: str)
 
 def process_module_file(
     file_path: str,
-    modules: list[tuple[object, str]],
-    converter_func: Callable[[object, str], str],  # (module, module_name)
+    modules: Sequence[tuple[ModuleType, str]],
+    converter_func: Callable[[ModuleType, str], str],
     output_dir: Path,
     exclude_private: bool = False,
 ) -> bool:

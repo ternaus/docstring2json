@@ -8,11 +8,13 @@ import inspect
 import pkgutil
 from collections import defaultdict
 from collections.abc import Callable
-from pathlib import Path
-from typing import Any
+from types import FunctionType, ModuleType
+from typing import Any, TypeVar
+
+T = TypeVar("T")
 
 
-def collect_module_members(module: object) -> tuple[list[tuple[str, object]], list[tuple[str, object]]]:
+def collect_module_members(module: ModuleType) -> tuple[list[tuple[str, type[Any]]], list[tuple[str, FunctionType]]]:
     """Collect classes and functions from a module.
 
     Args:
@@ -21,8 +23,8 @@ def collect_module_members(module: object) -> tuple[list[tuple[str, object]], li
     Returns:
         Tuple of (classes, functions) where each is a list of (name, object) pairs
     """
-    classes = []
-    functions = []
+    classes: list[tuple[str, type[Any]]] = []
+    functions: list[tuple[str, FunctionType]] = []
 
     for name, obj in inspect.getmembers(module):
         # Skip private members
@@ -52,33 +54,61 @@ def normalize_anchor_id(module_name: str, item_name: str) -> str:
     return f"{module_name.replace('.', '-')}-{item_name}"
 
 
-def collect_package_modules(package: object, *, exclude_private: bool = True) -> list[tuple[str, object]]:
-    """Collect all modules in a package.
+def collect_package_modules(
+    package: ModuleType,
+    package_name: str = "",
+    *,
+    exclude_private: bool = False,
+) -> list[tuple[ModuleType, str]]:
+    """Collect all modules in a package recursively.
 
     Args:
         package: Python package
+        package_name: Name of the package
         exclude_private: Whether to exclude private modules
 
     Returns:
-        List of (name, module) pairs
+        list: List of (module, module_name) tuples
     """
-    modules = []
-    package_path = Path(package.__file__).parent
+    modules_to_process: list[tuple[ModuleType, str]] = []
 
-    for _, name, _is_pkg in pkgutil.walk_packages([str(package_path)]):
-        if exclude_private and name.startswith("_"):
+    # Process the root module
+    if hasattr(package, "__file__") and package.__file__:
+        modules_to_process.append((package, package.__name__))
+
+    # Find all submodules recursively using a queue
+    modules_to_explore = [(package, package_name)]
+    explored_modules = set()
+
+    while modules_to_explore:
+        current_package, current_name = modules_to_explore.pop(0)
+        if current_name in explored_modules:
             continue
 
-        try:
-            module = importlib.import_module(f"{package.__name__}.{name}")
-            modules.append((name, module))
-        except ImportError:
-            pass
+        explored_modules.add(current_name)
 
-    return modules
+        if not hasattr(current_package, "__path__"):
+            continue
+
+        for _module_finder, module_name, is_pkg in pkgutil.iter_modules(current_package.__path__, f"{current_name}."):
+            if exclude_private and any(part.startswith("_") for part in module_name.split(".")):
+                continue
+
+            try:
+                module = importlib.import_module(module_name)
+                if hasattr(module, "__file__") and module.__file__:
+                    modules_to_process.append((module, module_name))
+
+                    # If this is a package, add it to the exploration queue
+                    if is_pkg:
+                        modules_to_explore.append((module, module_name))
+            except (ImportError, AttributeError):
+                pass
+
+    return modules_to_process
 
 
-def group_modules_by_file(modules: list[tuple[str, object]]) -> dict[str, list[tuple[str, object]]]:
+def group_modules_by_file(modules: list[tuple[str, ModuleType]]) -> dict[str, list[tuple[str, ModuleType]]]:
     """Group modules by their source file.
 
     Args:
@@ -87,12 +117,9 @@ def group_modules_by_file(modules: list[tuple[str, object]]) -> dict[str, list[t
     Returns:
         Dict mapping file paths to lists of (name, module) pairs
     """
-    groups: dict[str, list[tuple[str, object]]] = defaultdict(list)
+    groups: dict[str, list[tuple[str, ModuleType]]] = defaultdict(list)
 
     for name, module in modules:
-        # Note: try-except inside loop is necessary here as each module needs to be
-        # processed independently. Moving it outside would make error handling more complex
-        # and less maintainable. The performance impact is minimal as this is not in a hot path.
         try:
             file_path = inspect.getfile(module)
             groups[file_path].append((name, module))
@@ -102,34 +129,45 @@ def group_modules_by_file(modules: list[tuple[str, object]]) -> dict[str, list[t
     return dict(groups)
 
 
-def has_documentable_members(module: object) -> bool:
-    """Check if a module has any documentable members.
+def has_documentable_members(
+    module: ModuleType,
+    *,
+    exclude_private: bool,
+) -> bool:
+    """Check if a module has documentable members.
 
     Args:
-        module: Python module
+        module: Module to check
+        exclude_private: Whether to exclude private members
 
     Returns:
-        True if the module has documentable members
+        bool: True if the module has documentable members
     """
+    # Skip __init__.py files
+    if hasattr(module, "__file__") and module.__file__ and module.__file__.endswith("__init__.py"):
+        return False
+
     for name, obj in inspect.getmembers(module):
-        if name.startswith("_"):
+        if exclude_private and name.startswith("_"):
             continue
+
         if (
-            hasattr(obj, "__module__")
+            (inspect.isclass(obj) or inspect.isfunction(obj))
+            and hasattr(obj, "__module__")
             and obj.__module__ == module.__name__
-            and (inspect.isclass(obj) or inspect.isfunction(obj))
         ):
             return True
+
     return False
 
 
 def process_module_file(
     _file_path: str,
-    modules: list[tuple[str, object]],
+    modules: list[tuple[str, ModuleType]],
     *,
     github_repo: str | None = None,
     branch: str = "main",
-    converter_func: Callable[[Any, str | None, str], str],
+    converter_func: Callable[[ModuleType, str | None, str], str],
 ) -> str:
     """Process a file containing multiple modules.
 
@@ -146,9 +184,6 @@ def process_module_file(
     content = []
 
     for _, module in modules:
-        # Note: try-except inside loop is necessary here as each module needs to be
-        # processed independently. Moving it outside would make error handling more complex
-        # and less maintainable. The performance impact is minimal as this is not in a hot path.
         try:
             doc = converter_func(module, github_repo, branch)
             content.append(doc)

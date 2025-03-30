@@ -5,13 +5,17 @@ that can be used with TSX components.
 """
 
 import logging
+from typing import TYPE_CHECKING, Any
 
 from utils.signature_formatter import Parameter
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
 
-def process_description(parsed: dict) -> str | None:
+def process_description(parsed: dict[str, str | list[Any] | dict[str, Any]]) -> str | None:
     """Process the description section.
 
     Args:
@@ -21,10 +25,12 @@ def process_description(parsed: dict) -> str | None:
         Processed description or None if not available
     """
     description = parsed.get("Description", "")
-    return description if description else None
+    if isinstance(description, str):
+        return description if description else None
+    return None
 
 
-def build_params_data(params: list[Parameter], parsed: dict) -> list[dict] | None:
+def build_params_data(params: list[Parameter], parsed: dict[str, list[dict[str, str]]]) -> list[dict[str, str]] | None:
     """Build parameters data structure.
 
     Args:
@@ -51,7 +57,7 @@ def build_params_data(params: list[Parameter], parsed: dict) -> list[dict] | Non
     return result
 
 
-def _format_returns_data(content: dict | None) -> dict | None:
+def _format_returns_data(content: dict[str, str] | list[dict[str, str]] | None) -> dict[str, str] | None:
     """Format the Returns section as data.
 
     Args:
@@ -63,13 +69,21 @@ def _format_returns_data(content: dict | None) -> dict | None:
     if not content:
         return None
 
+    if isinstance(content, list):
+        if not content:
+            return None
+        content = content[0]
+
+    if not isinstance(content, dict):
+        return {"type": "", "description": str(content)}
+
     return {
-        "type": content.get("type"),
+        "type": content.get("type", ""),
         "description": content.get("description", ""),
     }
 
 
-def _format_raises_data(content: list | str) -> list[dict] | None:
+def _format_raises_data(content: list[dict[str, str] | str] | str) -> list[dict[str, str]] | None:
     """Format the Raises section as data.
 
     Args:
@@ -99,7 +113,7 @@ def _format_raises_data(content: list | str) -> list[dict] | None:
     return raises_list or None
 
 
-def format_section_data(section: str, content: list | dict | str) -> dict | None:
+def format_section_data(section: str, content: list[Any] | dict[str, Any] | str) -> dict[str, Any] | None:
     """Format a docstring section as structured data.
 
     Args:
@@ -112,7 +126,7 @@ def format_section_data(section: str, content: list | dict | str) -> dict | None
     if not content:
         return None
 
-    section_formatters = {
+    section_formatters: dict[str, Callable[[Any], dict[str, Any]]] = {
         "Returns": lambda c: {"title": "Returns", "content": _format_returns_data(c), "contentType": "data"},
         "Raises": lambda c: {"title": "Raises", "content": _format_raises_data(c), "contentType": "data"},
         "Example": lambda c: {"title": "Example", "content": c, "contentType": "code"},

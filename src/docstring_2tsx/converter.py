@@ -8,6 +8,8 @@ import json
 import logging
 from collections.abc import Callable
 from pathlib import Path
+from types import ModuleType
+from typing import Any, TypeVar
 
 from google_docstring_parser import parse_google_docstring
 
@@ -33,8 +35,10 @@ logger = logging.getLogger(__name__)
 # Path to import components from, could be made configurable
 COMPONENTS_IMPORT_PATH = "@/components/DocComponents"
 
+T = TypeVar("T")
 
-def get_source_line(obj: type | Callable) -> int:
+
+def get_source_line(obj: type | Callable[..., Any]) -> int:
     """Get the source line number for a class or function.
 
     Args:
@@ -44,12 +48,14 @@ def get_source_line(obj: type | Callable) -> int:
         Line number in the source file
     """
     try:
-        return obj.__code__.co_firstlineno
+        if hasattr(obj, "__code__"):
+            return obj.__code__.co_firstlineno
+        return 1
     except AttributeError:
         return 1
 
 
-def get_source_code(obj: type | Callable) -> str | None:
+def get_source_code(obj: type | Callable[..., Any]) -> str | None:
     """Get source code for a class or function.
 
     Args:
@@ -66,7 +72,7 @@ def get_source_code(obj: type | Callable) -> str | None:
         return None
 
 
-def class_to_data(obj: type | Callable) -> dict:
+def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
     """Convert class or function to structured data format.
 
     This function extracts documentation data for a class or function from
@@ -104,13 +110,13 @@ def class_to_data(obj: type | Callable) -> dict:
     params_data = build_params_data(params, parsed)
 
     # Process other sections (returns, raises, etc.)
-    sections = []
+    sections: list[dict[str, Any]] = []
     for section, content in parsed.items():
         if section not in ["Description", "Args"] and (section_data := format_section_data(section, content)):
             sections.append(section_data)
 
     # Create the data structure
-    member_data = {
+    member_data: dict[str, Any] = {
         "name": obj_name,
         "type": "class" if isinstance(obj, type) else "function",
         "signature": {
@@ -142,7 +148,7 @@ def class_to_data(obj: type | Callable) -> dict:
     return member_data
 
 
-def file_to_tsx(module: object, module_name: str) -> str:
+def file_to_tsx(module: ModuleType, module_name: str) -> str:
     """Convert a module to a TSX document that uses imported components.
 
     Args:
@@ -156,7 +162,7 @@ def file_to_tsx(module: object, module_name: str) -> str:
     classes, functions = collect_module_members(module)
 
     # Process classes and functions to get their data
-    members_data = []
+    members_data: list[dict[str, Any]] = []
     for _name, obj in sorted(classes + functions):
         # Convert to data structure
         member_data = class_to_data(obj)
@@ -194,7 +200,7 @@ def file_to_tsx(module: object, module_name: str) -> str:
 
 
 def package_to_tsx_files(
-    package: object,
+    package: ModuleType,
     output_dir: Path,
 ) -> None:
     """Convert a package to TSX files.
