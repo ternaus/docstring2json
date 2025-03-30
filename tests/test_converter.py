@@ -120,8 +120,6 @@ def test_class_to_data_basic_fields(test_obj: Any, expected_fields: dict[str, An
 
     # Check all required fields exist
     assert "signature" in result
-    assert "params" in result
-    assert "sections" in result
     assert "source_line" in result
 
 

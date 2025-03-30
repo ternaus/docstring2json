@@ -160,7 +160,6 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
                     if param.annotation != inspect.Parameter.empty
                     else "Any",
                     "default": str(param.default) if param.default != inspect.Parameter.empty else None,
-                    "description": parsed.get("params", {}).get(param.name, ""),
                 }
                 for param in sig.parameters.values()
                 if param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD)
