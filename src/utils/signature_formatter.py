@@ -44,13 +44,19 @@ def _get_param_type(param: inspect.Parameter) -> str:
     if hasattr(param.annotation, "__name__"):
         return param.annotation.__name__
 
-    param_type = str(param.annotation).replace("typing.", "")
+    # For complex types like Literal, Union, etc., keep the full type string
+    param_type = str(param.annotation)
     # Clean up typing annotations (remove typing. prefix)
-    if "'" in param_type:
-        param_type = param_type.split("'")[1]
+    param_type = param_type.replace("typing.", "")
     # For Literal types, keep the full type string
     if param_type.startswith("Literal"):
-        param_type = str(param.annotation)
+        return str(param.annotation)
+    # For union types (using |), keep the full type string
+    if "|" in param_type:
+        return str(param.annotation)
+    # For tuple types, keep the full type string
+    if param_type.startswith("tuple"):
+        return str(param.annotation)
 
     return param_type
 
