@@ -33,12 +33,12 @@ pip install google-docstring-2tsx
 ## Usage
 
 ```bash
-python -m src --package-name PACKAGE_NAME --output-dir OUTPUT_DIR
+python -m src.docstring_2tsx.__main__ --package-name PACKAGE_NAME --output-dir OUTPUT_DIR
 ```
 
-For example:
+or:
 ```bash
-python -m src --package-name albumentations --output-dir albumentations-docs/src/app/docs
+docstring2tsx --package-name PACKAGE_NAME --output-dir OUTPUT_DIR
 ```
 
 This will:
