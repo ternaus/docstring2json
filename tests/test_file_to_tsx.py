@@ -142,8 +142,14 @@ def test_file_to_tsx_handles_module_without_docstring() -> None:
     json_str = result[json_start:json_end]
     module_data = json.loads(json_str)
 
-    # Check empty docstring
+    # Check empty docstring in moduleData
     assert module_data["docstring"] == ""
+
+    # Check metadata is still generated with empty description
+    assert "import { Metadata } from 'next';" in result
+    assert "export const metadata: Metadata = {" in result
+    assert "title: 'no_docs_module'," in result
+    assert 'description: "",' in result
 
 
 def test_file_to_tsx_handles_error_gracefully(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -164,3 +170,24 @@ def test_file_to_tsx_handles_error_gracefully(monkeypatch: pytest.MonkeyPatch) -
     assert "import { ModuleDoc } from '@/components/DocComponents';" in result
     assert "Error serializing module data" in result
     assert "const moduleData = { moduleName: 'test_module', docstring: 'Error serializing module data', members: [] };" in result
+
+
+def test_file_to_tsx_generates_metadata(test_module: types.ModuleType) -> None:
+    """Test that file_to_tsx generates the Next.js metadata export."""
+    result = file_to_tsx(test_module, "test_module")
+
+    # Check for Metadata import
+    assert "import { Metadata } from 'next';" in result
+
+    # Check for metadata export block
+    assert "export const metadata: Metadata = {" in result
+
+    # Check for title (should match module name)
+    assert "title: 'test_module'," in result
+
+    # Check for description (should be derived from the module docstring)
+    # Extract the first line of the module docstring for comparison
+    expected_description = MODULE_DOCSTRING.split("\n")[0].strip()
+    # Escape quotes for comparison
+    escaped_expected = expected_description.replace("\"", "\\\"").replace("'", "\\'")
+    assert f'description: "{escaped_expected}",' in result

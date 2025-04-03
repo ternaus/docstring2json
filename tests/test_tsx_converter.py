@@ -128,7 +128,7 @@ def test_class_to_data():
 
 def test_tsx_content_generation(monkeypatch):
     """Test TSX content generation."""
-    from src.docstring_2tsx.converter import file_to_tsx
+    from src.docstring_2tsx.converter import file_to_tsx, COMPONENTS_IMPORT_PATH
 
     class MockModule:
         """Mock module for testing."""
@@ -137,19 +137,32 @@ def test_tsx_content_generation(monkeypatch):
         __name__ = "test_module"
 
     def mock_collect_module_members(*args, **kwargs):
-        return [("DummyClass", DummyClass)], [("dummy_function", dummy_function)]
+        # Return dummy data matching expected structure
+        dummy_class = type('DummyClass', (), {'__doc__': 'Dummy class doc', '__name__': 'DummyClass'})
+        dummy_function = lambda x: x
+        dummy_function.__name__ = 'dummy_function'
+        dummy_function.__doc__ = 'Dummy function doc'
+        return [("DummyClass", dummy_class)], [("dummy_function", dummy_function)]
 
     def mock_class_to_data(*args, **kwargs):
-        return {
-            "name": "test",
-            "type": "class",
+        # Ensure mock returns required fields, including ancestors for classes
+        obj = args[0]
+        obj_type = "class" if isinstance(obj, type) else "function"
+        data = {
+            "name": obj.__name__,
+            "type": obj_type,
             "signature": {
-                "name": "test",
+                "name": obj.__name__,
                 "params": [],
-                "return_type": None,
             },
-            "docstring": {"Description": "Test description"},
+            "docstring": {"Description": obj.__doc__},
+            "source_line": 1, # Mock value
         }
+        if obj_type == "class":
+            data["ancestors"] = [] # Mock value
+        else:
+             data["signature"]["return_type"] = None # Mock value
+        return data
 
     monkeypatch.setattr(
         "src.docstring_2tsx.converter.collect_module_members",
@@ -162,17 +175,35 @@ def test_tsx_content_generation(monkeypatch):
     # Check basic structure
     assert isinstance(result, str)
     assert result.startswith(f"import {{ ModuleDoc }} from '{COMPONENTS_IMPORT_PATH}'")
+    assert "import { Metadata } from 'next';" in result # Check metadata import
+    assert "export const metadata: Metadata = {" in result # Check metadata export
     assert "export default function Page()" in result
 
-    # Parse the moduleData JSON
-    start = result.find("const moduleData = ") + len("const moduleData = ")
-    end = result.find(";\n\nexport")
-    module_data = json.loads(result[start:end])
+    # Parse the moduleData JSON - find it after the metadata block
+    # Find the start of the moduleData definition
+    json_start_marker = "const moduleData = "
+    json_start_pos = result.find(json_start_marker)
+    assert json_start_pos != -1, "Could not find 'const moduleData = ' marker"
+
+    # Find the end of the moduleData definition (before the Page export)
+    json_end_marker = ";\n\nexport default function Page()"
+    json_end_pos = result.find(json_end_marker, json_start_pos)
+    assert json_end_pos != -1, "Could not find end marker ';\n\nexport default function Page()'"
+
+    # Extract the JSON string
+    json_str = result[json_start_pos + len(json_start_marker) : json_end_pos]
+
+    # Parse the JSON data
+    try:
+        module_data = json.loads(json_str)
+    except json.JSONDecodeError as e:
+        pytest.fail(f"Failed to parse JSON: {e}\nJSON string was: {json_str}")
 
     # Check module data structure
     assert isinstance(module_data, dict)
     assert module_data["moduleName"] == "test_module"
     assert "docstring" in module_data
+    assert module_data["docstring"] == "Module docstring"
     assert "members" in module_data
     assert isinstance(module_data["members"], list)
     assert len(module_data["members"]) == 2  # One for class, one for function

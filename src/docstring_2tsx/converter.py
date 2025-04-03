@@ -26,6 +26,10 @@ COMPONENTS_IMPORT_PATH = "@/components/DocComponents"
 # Error messages
 ERR_EXPECTED_DICT = "Expected dict result from convert_to_serializable"
 
+# --- Constants --- #
+MAX_METADATA_DESCRIPTION_LENGTH = 160
+# --- End Constants --- #
+
 # Type definitions
 T = TypeVar("T")
 JSONSerializable = str | int | float | bool | None | dict[str, "JSONSerializable"] | list["JSONSerializable"]
@@ -290,10 +294,38 @@ def file_to_tsx(module: ModuleType, module_name: str) -> str:
     sanitized_data = sanitize_for_json(module_data)
     module_data_str = serialize_module_data(sanitized_data, module_name)
 
+    # --- Generate Metadata --- #
+    module_doc = module.__doc__ or ""
+    # Extract first paragraph or first line as description
+    if "\n\n" in module_doc:
+        short_description = module_doc.split("\n\n")[0].replace("\n", " ").strip()
+    elif "\n" in module_doc:
+        short_description = module_doc.split("\n")[0].strip()
+    else:
+        short_description = module_doc.strip()
+
+    # Truncate description if too long
+    if len(short_description) > MAX_METADATA_DESCRIPTION_LENGTH:
+        short_description = short_description[: MAX_METADATA_DESCRIPTION_LENGTH - 3] + "..."
+
+    # Escape quotes for the JS string
+    escaped_description = short_description.replace('"', '\\"').replace("'", "\\'")
+
+    metadata_export = f"""
+import {{ Metadata }} from 'next';
+
+export const metadata: Metadata = {{
+  title: '{module_name}',
+  description: "{escaped_description}",
+}};
+"""
+    # --- End Metadata --- #
+
     # Create the page.tsx file content
     components = "ModuleDoc"
     return (
-        f"import {{ {components} }} from '{COMPONENTS_IMPORT_PATH}';\n\n"
+        f"import {{ {components} }} from '{COMPONENTS_IMPORT_PATH}';\n"
+        f"{metadata_export}\n"
         "// Data structure extracted from Python docstrings\n"
         f"const moduleData = {module_data_str};\n\n"
         "export default function Page() {\n"
