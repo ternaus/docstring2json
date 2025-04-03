@@ -110,11 +110,8 @@ def sanitize_for_json(data: ComplexObject) -> JSONSerializable:
         return {str(k): sanitize_for_json(v) for k, v in data.items()}
     if isinstance(data, (list, tuple)):
         return [sanitize_for_json(item) for item in data]
-    if isinstance(data, type):
-        # For type objects, return just the name
-        return data.__name__
-    # Convert anything else to string
-    return str(data)
+
+    return data.__name__ if isinstance(data, type) else str(data)
 
 
 def get_class_ancestors(cls: type) -> list[str]:

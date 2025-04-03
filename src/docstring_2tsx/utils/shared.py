@@ -163,6 +163,26 @@ def has_documentable_members(
     return False
 
 
+def get_path_segments(module_name: str, file_name: str) -> list[str]:
+    """Determine the output path segments based on module and file name.
+
+    Args:
+        module_name: Full module name (e.g., "package.submodule")
+        file_name: Base name of the file (e.g., "my_module" or "__init__")
+
+    Returns:
+        list[str]: List of path segments for the output directory.
+    """
+    segments = module_name.split(".")
+    if file_name == "__init__":
+        # For __init__.py files, use the parent directory name.
+        return segments[:-1]
+    if not file_name.startswith("__"):
+        # For regular files, append the file name.
+        segments.append(file_name)
+    return segments
+
+
 def build_output_dir(output_dir: Path, module_name: str, file_name: str) -> Path:
     """Build output directory path for a module.
 
@@ -174,19 +194,33 @@ def build_output_dir(output_dir: Path, module_name: str, file_name: str) -> Path
     Returns:
         Path: Output directory path
     """
-    # Convert module name to path segments
-    path_segments = module_name.split(".")
-
-    # Handle special cases
-    if file_name == "__init__":
-        # For __init__.py files, use the parent directory name
-        path_segments = path_segments[:-1]
-    elif not file_name.startswith("__"):
-        # For regular files, append the file name
-        path_segments.append(file_name)
-
+    # Determine path segments using the helper function
+    path_segments = get_path_segments(module_name, file_name)
     # Build the output path
     return output_dir.joinpath(*path_segments)
+
+
+def write_module_output(
+    module: ModuleType,
+    module_name: str,
+    output_dir: Path,
+    file_name: str,
+    converter_func: Callable[[ModuleType, str], str],
+) -> None:
+    """Generate and write the documentation output for a module.
+
+    Args:
+        module: The module object to document.
+        module_name: The full name of the module.
+        output_dir: The base directory to write output files.
+        file_name: The base name of the source file (without extension).
+        converter_func: The function to convert module data to string content.
+    """
+    module_output_dir = build_output_dir(output_dir, module_name, file_name)
+    module_output_dir.mkdir(parents=True, exist_ok=True)
+    content = converter_func(module, module_name)
+    output_file = module_output_dir / "page.tsx"  # Assuming .tsx extension
+    output_file.write_text(content)
 
 
 def process_module_file(
@@ -199,9 +233,9 @@ def process_module_file(
 
     Args:
         file_path: Path to the module file
-        modules: List of (module, module_name) tuples
+        modules: List of (module, module_name) tuples associated with the file
         converter_func: Function to convert module to documentation
-        output_dir: Directory to write output files
+        output_dir: Base directory to write output files
 
     Returns:
         bool: True if processing was successful, False otherwise
@@ -210,20 +244,13 @@ def process_module_file(
         path_obj = Path(file_path)
         file_name = path_obj.stem
         if file_name == "__init__":
-            return False
+            return False  # Skip __init__.py files
 
+        # Find the module with the shortest name (likely the primary module)
         module, module_name = min(modules, key=lambda x: len(x[1]))
-        module_output_dir = build_output_dir(
-            output_dir,
-            module_name,
-            file_name,
-        )
-        module_output_dir.mkdir(parents=True, exist_ok=True)
 
-        content = converter_func(module, module_name)
-        output_file = module_output_dir / "page.tsx"
-        output_file.write_text(content)
-
+        # Generate and write the output using the helper function
+        write_module_output(module, module_name, output_dir, file_name, converter_func)
         return True
     except (ImportError, AttributeError, OSError, ValueError):
         logger.exception(f"Failed to process module file {file_path}")
