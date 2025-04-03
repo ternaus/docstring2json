@@ -37,7 +37,7 @@ repos:
       - id: requirements-txt-fixer
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version.
-    rev: v0.11.2
+    rev: v0.11.3
     hooks:
       # Run the linter.
       - id: ruff
@@ -78,4 +78,5 @@ repos:
     rev: 0.0.7
     hooks:
       - id: check-google-docstrings
+        exclude: "^tests/|^albumentations-docs/|^build/"
         additional_dependencies: ["tomli>=2.0.0"]

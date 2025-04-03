@@ -3,8 +3,9 @@
 import argparse
 from pathlib import Path
 
-from docstring_2tsx.converter import package_to_tsx_files
-from docstring_2tsx.utils.importer import import_module_from_file
+from docstring_2tsx.converter import file_to_tsx
+from utils.importer import import_module_from_file
+from utils.shared import process_package
 
 
 def main() -> None:
@@ -12,8 +13,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Convert Python files to TSX documentation components")
     parser.add_argument("input_file", type=Path, help="Python file to convert")
     parser.add_argument("output_dir", type=Path, help="Directory to write TSX files")
-    parser.add_argument("--github-repo", help="Base URL of the GitHub repository")
-    parser.add_argument("--branch", default="main", help="Branch name for GitHub links")
+    parser.add_argument("--exclude-private", action="store_true", help="Exclude private members")
 
     args = parser.parse_args()
 
@@ -21,11 +21,11 @@ def main() -> None:
     module = import_module_from_file(args.input_file)
 
     # Convert to TSX files
-    package_to_tsx_files(
-        module,
-        args.output_dir,
-        github_repo=args.github_repo,
-        branch=args.branch,
+    process_package(
+        package_name=module.__name__,
+        output_dir=args.output_dir,
+        converter_func=file_to_tsx,
+        exclude_private=args.exclude_private,
     )
 
 

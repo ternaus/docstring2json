@@ -5,53 +5,56 @@ This module contains functions that are shared between markdown and TSX converte
 
 import importlib
 import inspect
+import logging
 import pkgutil
-from collections import defaultdict
 from collections.abc import Callable
-from types import FunctionType, ModuleType
+from pathlib import Path
+from types import ModuleType
 from typing import Any, TypeVar
+
+from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
 
-def collect_module_members(module: ModuleType) -> tuple[list[tuple[str, type[Any]]], list[tuple[str, FunctionType]]]:
+def collect_module_members(module: ModuleType) -> tuple[list[tuple[str, type]], list[tuple[str, Callable[..., Any]]]]:
     """Collect classes and functions from a module.
 
     Args:
-        module: Python module
+        module: Module to collect members from
 
     Returns:
-        Tuple of (classes, functions) where each is a list of (name, object) pairs
+        tuple[list[tuple[str, type]], list[tuple[str, Callable[..., Any]]]]: Tuple of (classes, functions)
     """
-    classes: list[tuple[str, type[Any]]] = []
-    functions: list[tuple[str, FunctionType]] = []
+    classes: list[tuple[str, type]] = []
+    functions: list[tuple[str, Callable[..., Any]]] = []
 
     for name, obj in inspect.getmembers(module):
-        # Skip private members
-        if name.startswith("_"):
+        # Skip private members and imported objects
+        if name.startswith("_") or inspect.getmodule(obj) != inspect.getmodule(module):
             continue
 
-        # Only consider items defined in this module
-        if hasattr(obj, "__module__") and obj.__module__ == module.__name__:
-            if inspect.isclass(obj):
-                classes.append((name, obj))
-            elif inspect.isfunction(obj):
-                functions.append((name, obj))
+        if inspect.isclass(obj):
+            classes.append((name, obj))
+        elif inspect.isfunction(obj):
+            functions.append((name, obj))
 
     return classes, functions
 
 
-def normalize_anchor_id(module_name: str, item_name: str) -> str:
-    """Normalize an anchor ID for linking.
+def normalize_anchor_id(text: str) -> str:
+    """Normalize text for use as an anchor ID.
 
     Args:
-        module_name: Module name
-        item_name: Item name
+        text: Text to normalize
 
     Returns:
-        Normalized anchor ID
+        str: Normalized text suitable for use as an anchor ID
     """
-    return f"{module_name.replace('.', '-')}-{item_name}"
+    # Remove special characters and replace spaces with hyphens
+    return text.strip().lower().replace(" ", "-")
 
 
 def collect_package_modules(
@@ -108,25 +111,27 @@ def collect_package_modules(
     return modules_to_process
 
 
-def group_modules_by_file(modules: list[tuple[str, ModuleType]]) -> dict[str, list[tuple[str, ModuleType]]]:
-    """Group modules by their source file.
+def group_modules_by_file(modules: list[tuple[ModuleType, str]]) -> dict[Path, list[tuple[ModuleType, str]]]:
+    """Group modules by their source file Path.
 
     Args:
-        modules: List of (name, module) pairs
+        modules: List of (module, name) tuples
 
     Returns:
-        Dict mapping file paths to lists of (name, module) pairs
+        dict[Path, list[tuple[ModuleType, str]]]: Dictionary mapping file Paths to module lists
     """
-    groups: dict[str, list[tuple[str, ModuleType]]] = defaultdict(list)
-
-    for name, module in modules:
+    grouped: dict[Path, list[tuple[ModuleType, str]]] = {}
+    for module, name in modules:
         try:
-            file_path = inspect.getfile(module)
-            groups[file_path].append((name, module))
-        except (TypeError, OSError):
+            file_path_str = inspect.getfile(module)
+            file_path = Path(file_path_str)
+            if file_path not in grouped:
+                grouped[file_path] = []
+            grouped[file_path].append((module, name))
+        except (TypeError, ValueError):
+            # Skip modules without source files
             pass
-
-    return dict(groups)
+    return grouped
 
 
 def has_documentable_members(
@@ -161,33 +166,132 @@ def has_documentable_members(
     return False
 
 
-def process_module_file(
-    _file_path: str,
-    modules: list[tuple[str, ModuleType]],
-    *,
-    github_repo: str | None = None,
-    branch: str = "main",
-    converter_func: Callable[[ModuleType, str | None, str], str],
-) -> str:
-    """Process a file containing multiple modules.
+def get_path_segments(module_name: str, file_name: str) -> list[str]:
+    """Determine the output path segments based on module and file name.
 
     Args:
-        _file_path: Path to the file (unused)
-        modules: List of (name, module) pairs
-        github_repo: Base URL of the GitHub repository
-        branch: Branch name for GitHub links
-        converter_func: Function to convert modules to documentation
+        module_name: Full module name (e.g., "package.submodule")
+        file_name: Base name of the file (e.g., "my_module" or "__init__")
 
     Returns:
-        Generated documentation content
+        list[str]: List of path segments for the output directory.
     """
-    content = []
+    segments = module_name.split(".")
+    if file_name == "__init__":
+        # For __init__.py files, use the parent directory name.
+        return segments[:-1]
+    if not file_name.startswith("__"):
+        # For regular files, append the file name.
+        segments.append(file_name)
+    return segments
 
-    for _, module in modules:
-        try:
-            doc = converter_func(module, github_repo, branch)
-            content.append(doc)
-        except (ValueError, TypeError, AttributeError):
-            pass
 
-    return "\n\n".join(content)
+def build_output_dir(output_dir: Path, module_name: str, file_name: str) -> Path:
+    """Build output directory path for a module.
+
+    Args:
+        output_dir: Base output directory
+        module_name: Name of the module
+        file_name: Name of the file
+
+    Returns:
+        Path: Output directory path
+    """
+    # Determine path segments using the helper function
+    path_segments = get_path_segments(module_name, file_name)
+    # Build the output path
+    return output_dir.joinpath(*path_segments)
+
+
+def write_module_output(
+    module: ModuleType,
+    module_name: str,
+    output_dir: Path,
+    file_name: str,
+    converter_func: Callable[[ModuleType, str], str],
+) -> None:
+    """Generate and write the documentation output for a module.
+
+    Args:
+        module: The module object to document.
+        module_name: The full name of the module.
+        output_dir: The base directory to write output files.
+        file_name: The base name of the source file (without extension).
+        converter_func: The function to convert module data to string content.
+    """
+    module_output_dir = build_output_dir(output_dir, module_name, file_name)
+    module_output_dir.mkdir(parents=True, exist_ok=True)
+    content = converter_func(module, module_name)
+    output_file = module_output_dir / "page.tsx"  # Assuming .tsx extension
+    output_file.write_text(content)
+
+
+def process_module_file(
+    file_path: Path,
+    modules: list[tuple[ModuleType, str]],
+    converter_func: Callable[[ModuleType, str], str],
+    output_dir: Path,
+) -> bool:
+    """Process a module file and generate documentation.
+
+    Args:
+        file_path: Path to the module file
+        modules: List of (module, module_name) tuples associated with the file
+        converter_func: Function to convert module to documentation
+        output_dir: Base directory to write output files
+
+    Returns:
+        bool: True if processing was successful, False otherwise
+    """
+    try:
+        file_name = file_path.stem
+        if file_name == "__init__":
+            return False  # Skip __init__.py files
+
+        # Find the module with the shortest name (likely the primary module)
+        module, module_name = min(modules, key=lambda x: len(x[1]))
+
+        # Generate and write the output using the helper function
+        write_module_output(module, module_name, output_dir, file_name, converter_func)
+        return True
+    except (ImportError, AttributeError, OSError, ValueError):
+        logger.exception(f"Failed to process module file {file_path}")
+        return False
+
+
+def process_package(
+    package_name: str,
+    output_dir: Path,
+    converter_func: Callable[[ModuleType, str], str],
+    exclude_private: bool = False,
+) -> None:
+    """Process an installed package and generate documentation.
+
+    Args:
+        package_name: Name of the package
+        output_dir: Directory to write output files
+        converter_func: Function to convert module to TSX
+        exclude_private: Whether to exclude private members
+    """
+    # Find all modules in the package
+    try:
+        package = importlib.import_module(package_name)
+    except ImportError:
+        logger.exception(f"Failed to import package {package_name}")
+        return
+
+    modules_with_names = collect_package_modules(package, package_name, exclude_private=exclude_private)
+
+    # Group modules by file path
+    modules_by_file = group_modules_by_file(modules_with_names)
+
+    # Process each module file with progress bar
+    with tqdm(total=len(modules_by_file), desc=f"Processing {package_name}") as pbar:
+        for file_path, file_modules in modules_by_file.items():
+            process_module_file(
+                file_path=file_path,  # Pass Path object
+                modules=file_modules,
+                converter_func=converter_func,
+                output_dir=output_dir,
+            )
+            pbar.update(1)

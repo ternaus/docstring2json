@@ -36,7 +36,8 @@ def _get_param_type(param: inspect.Parameter) -> str:
         param: Parameter object from inspect.signature
 
     Returns:
-        Formatted type string
+        str: Formatted type string, with typing. prefix removed and special handling
+            for Literal, Union, and tuple types
     """
     if param.annotation is inspect.Signature.empty:
         return ""
@@ -44,13 +45,19 @@ def _get_param_type(param: inspect.Parameter) -> str:
     if hasattr(param.annotation, "__name__"):
         return param.annotation.__name__
 
-    param_type = str(param.annotation).replace("typing.", "")
+    # For complex types like Literal, Union, etc., keep the full type string
+    param_type = str(param.annotation)
     # Clean up typing annotations (remove typing. prefix)
-    if "'" in param_type:
-        param_type = param_type.split("'")[1]
+    param_type = param_type.replace("typing.", "")
     # For Literal types, keep the full type string
     if param_type.startswith("Literal"):
-        param_type = str(param.annotation)
+        return str(param.annotation)
+    # For union types (using |), keep the full type string
+    if "|" in param_type:
+        return str(param.annotation)
+    # For tuple types, keep the full type string
+    if param_type.startswith("tuple"):
+        return str(param.annotation)
 
     return param_type
 
@@ -62,7 +69,8 @@ def _get_param_default(param: inspect.Parameter) -> str | None:
         param: Parameter object from inspect.signature
 
     Returns:
-        Default value formatted as string or None if no default
+        str | None: Default value formatted as string, or None if no default value exists.
+            For callable defaults, returns '<function name>'
     """
     if param.default is inspect.Signature.empty:
         return None
@@ -82,7 +90,8 @@ def _process_signature_params(signature: inspect.Signature, *, skip_self: bool =
         skip_self: Whether to skip 'self' parameter for methods
 
     Returns:
-        List of Parameter objects
+        list[Parameter]: List of Parameter objects containing name, type, and default value
+            for each parameter in the signature
     """
     params = []
     for name, param in signature.parameters.items():
@@ -103,7 +112,9 @@ def get_signature_params(obj: type | Callable[..., Any]) -> list[Parameter]:
         obj: Class or function to extract parameters from
 
     Returns:
-        List of Parameter objects containing name, type, default value
+        list[Parameter]: List of Parameter objects containing name, type, and default value
+            for each parameter in the object's signature. Returns empty list for built-in types
+            or objects without signatures
     """
     try:
         if isinstance(obj, type):
@@ -138,7 +149,8 @@ def format_default_value(value: object) -> str:
         value: Parameter default value
 
     Returns:
-        Formatted string representation of the value
+        str: Formatted string representation of the value, with special handling for
+            None and string values
     """
     if value is None:
         return "None"
@@ -153,7 +165,8 @@ def format_signature(obj: type | Callable[..., Any], params: list[Parameter]) ->
         params: List of parameters
 
     Returns:
-        SignatureData object containing structured signature information
+        SignatureData: Object containing structured signature information including name,
+            parameters, and return type (for functions)
     """
     # Get return type for functions
     return_type = None

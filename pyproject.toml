@@ -5,7 +5,7 @@ requires = [ "setuptools>=45", "wheel" ]
 
 [project]
 name = "google-docstring-2tsx"
-version = "0.0.4"
+version = "0.0.5"
 description = "A tool to convert Google-style docstrings to TSX format for Next.js documentation"
 readme = "README.md"
 keywords = [
@@ -43,7 +43,7 @@ classifiers = [
 ]
 
 dependencies = [
-  "google-docstring-parser",
+  "google-docstring-parser>=0.0.7",
   "tqdm>=4.65",
 ]
 
@@ -114,6 +114,8 @@ format.skip-magic-trailing-comma = false
 lint.select = [ "ALL" ]
 
 lint.ignore = [
+  "E402",
+  "EM101",
   # Allow empty docstrings - we've addressed this with proper docstrings
   "EM102",
   # Allow boolean positional parameter with default value - we've addressed this with keyword-only parameters
@@ -150,7 +152,7 @@ no_implicit_reexport = true
 # for strict mypy: (this is the tricky one :-))
 disallow_untyped_defs = true
 
-[tool.docstring_checker]
+[tool.googl_docstring_checker]
 paths = [ "docstring_2tsx", "utils" ]
 require_param_types = true
 check_type_consistency = true

@@ -4,22 +4,15 @@ This module provides functions to convert Python classes and functions with Goog
 docstrings into TSX documentation components that use imported React components.
 """
 
+import inspect
 import json
 import logging
-from collections.abc import Callable
-from pathlib import Path
+from collections.abc import Callable, Mapping, Sequence
 from types import ModuleType
 from typing import Any, TypeVar
 
 from google_docstring_parser import parse_google_docstring
 
-from utils.shared import (
-    collect_module_members,
-    collect_package_modules,
-    group_modules_by_file,
-    has_documentable_members,
-    process_module_file,
-)
 from utils.signature_formatter import (
     format_signature,
     get_signature_params,
@@ -30,7 +23,48 @@ logger = logging.getLogger(__name__)
 # Path to import components from, could be made configurable
 COMPONENTS_IMPORT_PATH = "@/components/DocComponents"
 
+# Error messages
+ERR_EXPECTED_DICT = "Expected dict result from convert_to_serializable"
+
+# --- Constants --- #
+MAX_METADATA_DESCRIPTION_LENGTH = 160
+# --- End Constants --- #
+
+# Type definitions
 T = TypeVar("T")
+JSONSerializable = str | int | float | bool | None | dict[str, "JSONSerializable"] | list["JSONSerializable"]
+ComplexObject = JSONSerializable | object | Mapping[str | object, Any] | Sequence[Any]
+
+# Type aliases to make signatures more readable
+ClassTuple = tuple[str, type]
+FunctionTuple = tuple[str, Callable[..., Any]]
+ClassOrFunction = type | Callable[..., Any]
+
+
+def collect_module_members(module: ModuleType) -> tuple[list[ClassTuple], list[FunctionTuple]]:
+    """Collect classes and functions from a module.
+
+    Args:
+        module: The module to collect members from
+
+    Returns:
+        tuple[list[ClassTuple], list[FunctionTuple]]:
+            Tuple of (classes, functions) where each is a list of (name, obj) pairs
+    """
+    classes: list[ClassTuple] = []
+    functions: list[FunctionTuple] = []
+
+    for name, obj in inspect.getmembers(module):
+        # Skip private members and imported objects
+        if name.startswith("_") or inspect.getmodule(obj) != inspect.getmodule(module):
+            continue
+
+        if inspect.isclass(obj):
+            classes.append((name, obj))
+        elif inspect.isfunction(obj):
+            functions.append((name, obj))
+
+    return classes, functions
 
 
 def get_source_line(obj: type | Callable[..., Any]) -> int:
@@ -40,7 +74,7 @@ def get_source_line(obj: type | Callable[..., Any]) -> int:
         obj: Class or function to get source line for
 
     Returns:
-        Line number in the source file
+        int: Line number in the source file
     """
     try:
         return obj.__code__.co_firstlineno if hasattr(obj, "__code__") else 1
@@ -55,7 +89,7 @@ def get_source_code(obj: type | Callable[..., Any]) -> str | None:
         obj: Class or function to get source code for
 
     Returns:
-        Source code as string or None if not available
+        str | None: Source code as string or None if not available
     """
     try:
         import inspect
@@ -63,6 +97,38 @@ def get_source_code(obj: type | Callable[..., Any]) -> str | None:
         return inspect.getsource(obj)
     except (TypeError, OSError):
         return None
+
+
+def sanitize_for_json(data: ComplexObject) -> JSONSerializable:
+    """Convert complex Python objects to JSON-compatible types.
+
+    Args:
+        data: Data to convert to JSON-serializable format
+
+    Returns:
+        JSONSerializable: JSON-compatible data
+    """
+    if isinstance(data, (str, int, float, bool, type(None))):
+        return data
+    if isinstance(data, dict):
+        return {str(k): sanitize_for_json(v) for k, v in data.items()}
+    if isinstance(data, (list, tuple)):
+        return [sanitize_for_json(item) for item in data]
+
+    return data.__name__ if isinstance(data, type) else str(data)
+
+
+def get_class_ancestors(cls: type) -> list[str]:
+    """Get the list of ancestor class names for a given class.
+
+    Args:
+        cls: The class to get ancestors for
+
+    Returns:
+        list[str]: List of ancestor class names, excluding 'object'
+    """
+    # Get all base classes in Method Resolution Order (MRO), excluding 'object'
+    return [base.__name__ for base in cls.__mro__[1:] if base.__name__ != "object"]
 
 
 def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
@@ -75,15 +141,13 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
         obj: Class or function to document
 
     Returns:
-        Dictionary containing structured documentation data
+        dict[str, Any]: Dictionary containing structured documentation data
     """
     # Get object name and parameters
     obj_name = obj.__name__
     params = get_signature_params(obj)
-
     # Get signature data
     signature_data = format_signature(obj, params)
-
     # Get source code and line number
     source_code = get_source_code(obj)
     source_line = get_source_line(obj)
@@ -96,31 +160,99 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
         logger.exception("Error parsing docstring for %s", docstring)
         parsed = {}
 
+    # Try to extract parameter information, but handle cases where signature isn't available
+    signature_params = []
+    try:
+        if not isinstance(obj, type) or hasattr(obj, "__init__"):
+            sig = inspect.signature(obj)
+            signature_params = [
+                {
+                    "name": param.name,
+                    "type": param.annotation.__name__
+                    if param.annotation != inspect.Parameter.empty and hasattr(param.annotation, "__name__")
+                    else str(param.annotation)
+                    if param.annotation != inspect.Parameter.empty
+                    else "Any",
+                    "default": str(param.default) if param.default != inspect.Parameter.empty else None,
+                }
+                for param in sig.parameters.values()
+                if param.kind not in (param.VAR_POSITIONAL, param.VAR_KEYWORD)
+            ]
+    except (ValueError, TypeError):
+        logger.warning("Could not extract signature for %s", obj_name)
+
     # Create the data structure
     member_data: dict[str, Any] = {
         "name": obj_name,
         "type": "class" if isinstance(obj, type) else "function",
         "signature": {
             "name": signature_data.name,
-            "params": [
-                {
-                    "name": p.name,
-                    "type": p.type,
-                    "default": p.default,
-                }
-                for p in signature_data.params
-            ],
-            "return_type": signature_data.return_type,
+            "params": signature_params,
         },
+        "docstring": parsed,
         "source_line": source_line,
-        "docstring": parsed,  # Pass raw parsed docstring to React
     }
+
+    # Add return_type only for functions
+    if not isinstance(obj, type):
+        member_data["signature"]["return_type"] = (
+            signature_data.return_type.__name__
+            if hasattr(signature_data.return_type, "__name__")
+            else str(signature_data.return_type)
+            if signature_data.return_type
+            else None
+        )
+    # Add ancestors list only for classes
+    else:
+        member_data["ancestors"] = get_class_ancestors(obj)
 
     # Add source code if available
     if source_code:
         member_data["source_code"] = source_code
 
     return member_data
+
+
+def serialize_module_data(data: ComplexObject, module_name: str) -> str:
+    """Serialize module data to JSON with fallback handling.
+
+    Args:
+        data: The module data to serialize
+        module_name: The name of the module for fallback data
+
+    Returns:
+        str: JSON string representation of the data
+    """
+    try:
+        return json.dumps(data, indent=2)
+    except TypeError:
+        logger.exception("Error serializing data to JSON, data may contain non-serializable types")
+        fallback_data = {
+            "moduleName": module_name,
+            "docstring": "Error serializing module data",
+            "members": [],
+        }
+        try:
+            return json.dumps(fallback_data, indent=2)
+        except TypeError:
+            # Ultimate fallback - handle even if the mock json.dumps always raises an error
+            return f"{{ moduleName: '{module_name}', docstring: 'Error serializing module data', members: [] }}"
+
+
+def process_member(obj: type | Callable[..., Any]) -> dict[str, Any] | None:
+    """Process a class or function member to extract documentation.
+
+    Args:
+        obj: The class or function to process
+
+    Returns:
+        dict[str, Any] | None: The processed member data or None if processing failed
+    """
+    try:
+        return class_to_data(obj)
+    except Exception:
+        logger.exception("Failed to process member %s", obj.__name__)
+        return None
 
 
 def file_to_tsx(module: ModuleType, module_name: str) -> str:
@@ -133,88 +265,70 @@ def file_to_tsx(module: ModuleType, module_name: str) -> str:
     Returns:
         str: The TSX content
     """
+    # Create basic module data structure with raw docstring
+    module_data = {
+        "moduleName": module_name,
+        "docstring": module.__doc__ or "",
+        "members": [],
+    }
+
     # Collect module members
     classes, functions = collect_module_members(module)
-
-    # Process classes and functions to get their data
     members_data: list[dict[str, Any]] = []
-    for _name, obj in sorted(classes + functions):
-        # Convert to data structure
-        member_data = class_to_data(obj)
-        members_data.append(member_data)
 
-    # Parse module-level docstring
-    module_docstring = module.__doc__ or ""
-    try:
-        module_data = {
-            "moduleName": module_name,
-            "docstring": parse_google_docstring(module_docstring),
-            "members": members_data,
-        }
-    except Exception:
-        logger.exception("Error parsing module docstring for %s", module_name)
-        module_data = {
-            "moduleName": module_name,
-            "docstring": {},
-            "members": members_data,
-        }
+    # Process classes and functions using the helper
+    for _name, class_obj in classes:
+        member_data = process_member(class_obj)
+        if member_data:
+            members_data.append(member_data)
 
-    # JSON representation of the data (with indentation for readability)
-    module_data_str = json.dumps(module_data, indent=2)
+    for _name, func_obj in functions:
+        member_data = process_member(func_obj)
+        if member_data:
+            members_data.append(member_data)
+
+    # Add members to module data
+    module_data["members"] = members_data  # type: ignore[assignment]
+
+    # Sanitize data and convert to JSON using the helper
+    sanitized_data = sanitize_for_json(module_data)
+    module_data_str = serialize_module_data(sanitized_data, module_name)
+
+    # --- Generate Metadata --- #
+    module_doc = module.__doc__ or ""
+    # Extract first paragraph or first line as description
+    if "\n\n" in module_doc:
+        short_description = module_doc.split("\n\n")[0].replace("\n", " ").strip()
+    elif "\n" in module_doc:
+        short_description = module_doc.split("\n")[0].strip()
+    else:
+        short_description = module_doc.strip()
+
+    # Truncate description if too long
+    if len(short_description) > MAX_METADATA_DESCRIPTION_LENGTH:
+        short_description = short_description[: MAX_METADATA_DESCRIPTION_LENGTH - 3] + "..."
+
+    # Escape quotes for the JS string
+    escaped_description = short_description.replace('"', '\\"').replace("'", "\\'")
+
+    metadata_export = f"""
+import {{ Metadata }} from 'next';
+
+export const metadata: Metadata = {{
+  title: '{module_name}',
+  description: "{escaped_description}",
+}};
+"""
+    # --- End Metadata --- #
 
     # Create the page.tsx file content
     components = "ModuleDoc"
     return (
-        f"import {{ {components} }} from '{COMPONENTS_IMPORT_PATH}';\n\n"
+        f"import {{ {components} }} from '{COMPONENTS_IMPORT_PATH}';\n"
+        f"{metadata_export}\n"
         "// Data structure extracted from Python docstrings\n"
         f"const moduleData = {module_data_str};\n\n"
         "export default function Page() {\n"
         "  return <ModuleDoc {...moduleData} />;\n"
         "}\n"
     )
-
-
-def package_to_tsx_files(
-    package: ModuleType,
-    output_dir: Path,
-) -> None:
-    """Convert a package to TSX files.
-
-    Args:
-        package: Python package
-        output_dir: Directory to write TSX files
-    """
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Collect all modules in the package
-    modules = collect_package_modules(package)
-
-    # Group modules by file
-    module_groups = group_modules_by_file(modules)
-
-    # Process each file
-    for file_path, file_modules in module_groups.items():
-        if not has_documentable_members(file_modules[0][1]):
-            continue
-
-        try:
-            # Get the module name from the first module in the file
-            module_name = file_modules[0][1].__name__
-
-            # Process the file
-            content = process_module_file(
-                file_path,
-                file_modules,
-                converter_func=file_to_tsx,
-            )
-
-            # Create the Next.js page structure
-            # Convert module name to path (e.g., "package.module.submodule" -> "package/module/submodule")
-            page_path = output_dir / module_name.replace(".", "/")
-            page_path.mkdir(parents=True, exist_ok=True)
-
-            # Write the content to page.tsx
-            output_file = page_path / "page.tsx"
-            output_file.write_text(content)
-        except Exception:
-            logger.exception("Error processing file %s", file_path)
