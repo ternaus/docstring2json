@@ -12,6 +12,8 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, TypeVar
 
+from tqdm import tqdm
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
@@ -109,22 +111,23 @@ def collect_package_modules(
     return modules_to_process
 
 
-def group_modules_by_file(modules: list[tuple[str, ModuleType]]) -> dict[str, list[tuple[str, ModuleType]]]:
-    """Group modules by their source file.
+def group_modules_by_file(modules: list[tuple[ModuleType, str]]) -> dict[Path, list[tuple[ModuleType, str]]]:
+    """Group modules by their source file Path.
 
     Args:
-        modules: List of (name, module) tuples
+        modules: List of (module, name) tuples
 
     Returns:
-        dict[str, list[tuple[str, ModuleType]]]: Dictionary mapping file paths to module lists
+        dict[Path, list[tuple[ModuleType, str]]]: Dictionary mapping file Paths to module lists
     """
-    grouped: dict[str, list[tuple[str, ModuleType]]] = {}
-    for name, module in modules:
+    grouped: dict[Path, list[tuple[ModuleType, str]]] = {}
+    for module, name in modules:
         try:
-            file_path = inspect.getfile(module)
+            file_path_str = inspect.getfile(module)
+            file_path = Path(file_path_str)
             if file_path not in grouped:
                 grouped[file_path] = []
-            grouped[file_path].append((name, module))
+            grouped[file_path].append((module, name))
         except (TypeError, ValueError):
             # Skip modules without source files
             pass
@@ -224,7 +227,7 @@ def write_module_output(
 
 
 def process_module_file(
-    file_path: str,
+    file_path: Path,
     modules: list[tuple[ModuleType, str]],
     converter_func: Callable[[ModuleType, str], str],
     output_dir: Path,
@@ -241,8 +244,7 @@ def process_module_file(
         bool: True if processing was successful, False otherwise
     """
     try:
-        path_obj = Path(file_path)
-        file_name = path_obj.stem
+        file_name = file_path.stem
         if file_name == "__init__":
             return False  # Skip __init__.py files
 
@@ -255,3 +257,41 @@ def process_module_file(
     except (ImportError, AttributeError, OSError, ValueError):
         logger.exception(f"Failed to process module file {file_path}")
         return False
+
+
+def process_package(
+    package_name: str,
+    output_dir: Path,
+    converter_func: Callable[[ModuleType, str], str],
+    exclude_private: bool = False,
+) -> None:
+    """Process an installed package and generate documentation.
+
+    Args:
+        package_name: Name of the package
+        output_dir: Directory to write output files
+        converter_func: Function to convert module to TSX
+        exclude_private: Whether to exclude private members
+    """
+    # Find all modules in the package
+    try:
+        package = importlib.import_module(package_name)
+    except ImportError:
+        logger.exception(f"Failed to import package {package_name}")
+        return
+
+    modules_with_names = collect_package_modules(package, package_name, exclude_private=exclude_private)
+
+    # Group modules by file path
+    modules_by_file = group_modules_by_file(modules_with_names)
+
+    # Process each module file with progress bar
+    with tqdm(total=len(modules_by_file), desc=f"Processing {package_name}") as pbar:
+        for file_path, file_modules in modules_by_file.items():
+            process_module_file(
+                file_path=file_path,  # Pass Path object
+                modules=file_modules,
+                converter_func=converter_func,
+                output_dir=output_dir,
+            )
+            pbar.update(1)
