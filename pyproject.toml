@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 requires = [ "setuptools>=45", "wheel" ]
 
 [project]
-name = "google-docstring-2tsx"
-version = "0.0.5"
+name = "docstring2tsx"
+version = "0.0.1"
 description = "A tool to convert Google-style docstrings to TSX format for Next.js documentation"
 readme = "README.md"
 keywords = [
@@ -16,9 +16,7 @@ keywords = [
   "parser",
   "python",
   "react",
-  "static-analysis",
   "tsx",
-  "type-hints",
 ]
 license = { text = "Custom License - See LICENSE file for details" }
 maintainers = [ { name = "Vladimir Iglovikov" } ]

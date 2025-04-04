@@ -27,13 +27,13 @@ See the [LICENSE](LICENSE) file for full details.
 ## Installation
 
 ```bash
-pip install google-docstring-2tsx
+pip install docstring2tsx
 ```
 
 ## Usage
 
 ```bash
-python -m src.docstring_2tsx.__main__ --package-name PACKAGE_NAME --output-dir OUTPUT_DIR
+python -m src.docstring2tsx.__main__ --package-name PACKAGE_NAME --output-dir OUTPUT_DIR
 ```
 
 or:
