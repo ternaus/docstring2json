@@ -5,7 +5,7 @@ requires = [ "setuptools>=45", "wheel" ]
 
 [project]
 name = "docstring2tsx"
-version = "0.0.1"
+version = "0.0.6"
 description = "A tool to convert Google-style docstrings to TSX format for Next.js documentation"
 readme = "README.md"
 keywords = [
