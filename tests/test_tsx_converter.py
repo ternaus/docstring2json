@@ -1,12 +1,10 @@
 """Tests for the TSX converter module."""
 
 import json
-from typing import Any
 
 import pytest
 
-from src.docstring_2tsx.converter import COMPONENTS_IMPORT_PATH, class_to_data
-from src.utils.signature_formatter import Parameter, SignatureData
+from src.docstring2tsx.converter import class_to_data
 
 
 class DummyClass:
@@ -128,7 +126,7 @@ def test_class_to_data():
 
 def test_tsx_content_generation(monkeypatch):
     """Test TSX content generation."""
-    from src.docstring_2tsx.converter import file_to_tsx, COMPONENTS_IMPORT_PATH
+    from src.docstring2tsx.converter import file_to_tsx, COMPONENTS_IMPORT_PATH
 
     class MockModule:
         """Mock module for testing."""
@@ -165,10 +163,10 @@ def test_tsx_content_generation(monkeypatch):
         return data
 
     monkeypatch.setattr(
-        "src.docstring_2tsx.converter.collect_module_members",
+        "src.docstring2tsx.converter.collect_module_members",
         mock_collect_module_members,
     )
-    monkeypatch.setattr("src.docstring_2tsx.converter.class_to_data", mock_class_to_data)
+    monkeypatch.setattr("src.docstring2tsx.converter.class_to_data", mock_class_to_data)
 
     result = file_to_tsx(MockModule, "test_module")
 

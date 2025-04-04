@@ -1,14 +1,12 @@
 """Tests for the file_to_tsx function."""
 
 import json
-import sys
 import types
-from pathlib import Path
 from typing import Any
 
 import pytest
 
-from docstring_2tsx.converter import file_to_tsx
+from docstring2tsx.converter import file_to_tsx
 
 # Test module with docstring
 MODULE_DOCSTRING = """Test module with Google-style docstring.
