@@ -18,7 +18,7 @@ keywords = [
   "react",
   "tsx",
 ]
-license = { text = "Custom License - See LICENSE file for details" }
+license = { file = "LICENSE" }
 maintainers = [ { name = "Vladimir Iglovikov" } ]
 authors = [
   { name = "Vladimir Iglovikov", email = "iglovikov@gmail.com" },
@@ -51,14 +51,14 @@ optional-dependencies.dev = [
 ]
 urls."bug tracker" = "https://github.com/ternaus/google-docstring-2tsx/issues"
 urls.homepage = "https://github.com/ternaus/google-docstring-2tsx"
-scripts.docstring2tsx = "docstring_2tsx.__main__:main"
+scripts.docstring2tsx = "docstring2tsx.__main__:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
-packages = [ "docstring_2tsx", "utils" ]
+packages = [ "docstring2tsx", "utils" ]
 
 [tool.setuptools.package-data]
-docstring_2tsx = [ "*.tsx", "templates/*.md", "templates/components/*.tsx.example" ]
+docstring2tsx = [ "*.tsx", "templates/*.md", "templates/components/*.tsx.example" ]
 
 [tool.setuptools.exclude-package-data]
 "*" = [ "tests*" ]
@@ -151,7 +151,7 @@ no_implicit_reexport = true
 disallow_untyped_defs = true
 
 [tool.googl_docstring_checker]
-paths = [ "docstring_2tsx", "utils" ]
+paths = [ "docstring2tsx", "utils" ]
 require_param_types = true
 check_type_consistency = true
 verbose = false
