@@ -6,17 +6,15 @@ requires = [ "setuptools>=45", "wheel" ]
 [project]
 name = "docstring2json"
 version = "0.0.8"
-description = "A tool to convert Google-style docstrings to JSON format for Next.js documentation"
+description = "A tool to convert Google-style docstrings to JSON format"
 readme = "README.md"
 keywords = [
   "docstring",
   "documentation",
   "google-style",
   "json",
-  "nextjs",
   "parser",
   "python",
-  "react",
 ]
 license = { file = "LICENSE" }
 maintainers = [ { name = "Vladimir Iglovikov" } ]

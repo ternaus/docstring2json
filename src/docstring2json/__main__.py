@@ -9,8 +9,7 @@ from pathlib import Path
 src_dir = Path(__file__).parent.parent.parent / "src"
 sys.path.insert(0, str(src_dir))
 
-from docstring2tsx.converter import file_to_json
-
+from docstring2json.converter import file_to_json
 from utils.shared import process_package
 
 # Configure logging
