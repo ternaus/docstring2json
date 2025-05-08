@@ -13,7 +13,7 @@ from typing import Any, TypeVar
 
 from google_docstring_parser import parse_google_docstring
 
-from utils.signature_formatter import (
+from src.utils.signature_formatter import (
     format_signature,
     get_signature_params,
 )
@@ -197,9 +197,9 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
     if not isinstance(obj, type):
         member_data["signature"]["return_type"] = (
             signature_data.return_type.__name__
-            if hasattr(signature_data.return_type, "__name__")
+            if signature_data.return_type is not None and hasattr(signature_data.return_type, "__name__")
             else str(signature_data.return_type)
-            if signature_data.return_type
+            if signature_data.return_type is not None
             else None
         )
     # Add ancestors list only for classes

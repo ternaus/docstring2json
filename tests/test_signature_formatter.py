@@ -5,7 +5,7 @@ from typing import Any, Callable
 
 import pytest
 
-from utils.signature_formatter import (
+from src.utils.signature_formatter import (
     Parameter,
     SignatureData,
     _get_param_default,
