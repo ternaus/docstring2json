@@ -332,3 +332,43 @@ export const metadata: Metadata = {{
         "  return <ModuleDoc {...moduleData} />;\n"
         "}\n"
     )
+
+
+def file_to_json(module: ModuleType, module_name: str) -> str:
+    """Convert a module to a JSON document with just the data.
+
+    Args:
+        module: The module object to document
+        module_name: Name of the module for the heading
+
+    Returns:
+        str: The JSON content
+    """
+    # Create basic module data structure with raw docstring
+    module_data = {
+        "moduleName": module_name,
+        "docstring": module.__doc__ or "",
+        "members": [],
+    }
+
+    # Collect module members
+    classes, functions = collect_module_members(module)
+    members_data: list[dict[str, Any]] = []
+
+    # Process classes and functions using the helper
+    for _name, class_obj in classes:
+        member_data = process_member(class_obj)
+        if member_data:
+            members_data.append(member_data)
+
+    for _name, func_obj in functions:
+        member_data = process_member(func_obj)
+        if member_data:
+            members_data.append(member_data)
+
+    # Add members to module data
+    module_data["members"] = members_data  # type: ignore[assignment]
+
+    # Sanitize data and convert to JSON
+    sanitized_data = sanitize_for_json(module_data)
+    return serialize_module_data(sanitized_data, module_name)

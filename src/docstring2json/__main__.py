@@ -1,4 +1,4 @@
-"""Main entry point for the docstring to TSX converter."""
+"""Main entry point for the docstring to JSON converter."""
 
 import argparse
 import logging
@@ -9,7 +9,8 @@ from pathlib import Path
 src_dir = Path(__file__).parent.parent.parent / "src"
 sys.path.insert(0, str(src_dir))
 
-from docstring2tsx.converter import file_to_tsx
+from docstring2tsx.converter import file_to_json
+
 from utils.shared import process_package
 
 # Configure logging
@@ -23,7 +24,7 @@ sys.path.insert(0, str(src_dir))
 
 def main() -> None:
     """Main entry point."""
-    parser = argparse.ArgumentParser(description="Convert Python docstrings to TSX")
+    parser = argparse.ArgumentParser(description="Convert Python docstrings to JSON")
     parser.add_argument("--package-name", required=True, help="Name of the package to process")
     parser.add_argument("--output-dir", required=True, help="Directory to write output files")
     parser.add_argument("--exclude-private", action="store_true", help="Exclude private members")
@@ -32,7 +33,7 @@ def main() -> None:
     process_package(
         package_name=args.package_name,
         output_dir=Path(args.output_dir),
-        converter_func=file_to_tsx,
+        converter_func=file_to_json,
         exclude_private=args.exclude_private,
     )
 

@@ -4,19 +4,19 @@ build-backend = "setuptools.build_meta"
 requires = [ "setuptools>=45", "wheel" ]
 
 [project]
-name = "docstring2tsx"
-version = "0.0.7"
-description = "A tool to convert Google-style docstrings to TSX format for Next.js documentation"
+name = "docstring2json"
+version = "0.0.8"
+description = "A tool to convert Google-style docstrings to JSON format for Next.js documentation"
 readme = "README.md"
 keywords = [
   "docstring",
   "documentation",
   "google-style",
+  "json",
   "nextjs",
   "parser",
   "python",
   "react",
-  "tsx",
 ]
 license = { file = "LICENSE" }
 maintainers = [ { name = "Vladimir Iglovikov" } ]
@@ -49,16 +49,16 @@ optional-dependencies.dev = [
   "pre-commit>=3.5",
   "pytest>=8.3.3",
 ]
-urls."bug tracker" = "https://github.com/ternaus/google-docstring-2tsx/issues"
-urls.homepage = "https://github.com/ternaus/google-docstring-2tsx"
-scripts.docstring2tsx = "docstring2tsx.__main__:main"
+urls."bug tracker" = "https://github.com/ternaus/docstring2json/issues"
+urls.homepage = "https://github.com/ternaus/docstring2json"
+scripts.docstring2json = "docstring2json.__main__:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
-packages = [ "docstring2tsx", "utils" ]
+packages = [ "docstring2json", "utils" ]
 
 [tool.setuptools.package-data]
-docstring2tsx = [ "*.tsx", "templates/*.md", "templates/components/*.tsx.example" ]
+docstring2json = [ "*.json", "templates/*.md", "templates/components/*.json.example" ]
 
 [tool.setuptools.exclude-package-data]
 "*" = [ "tests*" ]
@@ -151,7 +151,7 @@ no_implicit_reexport = true
 disallow_untyped_defs = true
 
 [tool.googl_docstring_checker]
-paths = [ "docstring2tsx", "utils" ]
+paths = [ "docstring2json", "utils" ]
 require_param_types = true
 check_type_consistency = true
 verbose = false
