@@ -1,6 +1,6 @@
 # Google Docstring to JSON Converter
 
-A tool that converts Python package docstrings to TSX files for Next.js documentation, with a focus on generating beautiful, interactive documentation.
+A tool that converts Python package docstrings to JSON files.
 
 ## License
 
