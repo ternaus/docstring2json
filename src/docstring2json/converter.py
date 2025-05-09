@@ -11,35 +11,22 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from types import ModuleType
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
+
+# Add src directory to sys.path
+src_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(src_dir))
 
 from google_docstring_parser import parse_google_docstring
 
-# Smart import that works both for direct script execution and installed package
-try:
-    # First try relative import (installed package)
-    from docstring2json.utils.signature_formatter import (
-        format_signature,
-        get_signature_params,
-    )
-except ImportError:
-    # Then try with src prefix (direct script)
-    try:
-        from src.docstring2json.utils.signature_formatter import (
-            format_signature,
-            get_signature_params,
-        )
-    except ImportError:
-        # As a last resort, try to add parent directory to path
-        module_dir = Path(__file__).parent
-        if module_dir.name == "docstring2json":
-            sys.path.insert(0, str(module_dir.parent))
-            from docstring2json.utils.signature_formatter import (
-                format_signature,
-                get_signature_params,
-            )
+from src.docstring2json.utils.signature_formatter import format_signature, get_signature_params
 
+# Configure logging
 logger = logging.getLogger(__name__)
+
+# Define type aliases for the imported functions
+SignatureFormatterType = Callable[[type | Callable[..., Any], list[Any]], Any]
+GetSignatureParamsType = Callable[[type | Callable[..., Any]], list[Any]]
 
 # Path to import components from, could be made configurable
 COMPONENTS_IMPORT_PATH = "@/components/DocComponents"
@@ -309,7 +296,7 @@ def file_to_json(module: ModuleType, module_name: str) -> str:
             members_data.append(member_data)
 
     # Add members to module data
-    module_data["members"] = members_data  # type: ignore[assignment]
+    module_data["members"] = cast("Any", members_data)
 
     # Sanitize data and convert to JSON
     sanitized_data = sanitize_for_json(module_data)

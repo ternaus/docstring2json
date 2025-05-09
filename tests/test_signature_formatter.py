@@ -5,7 +5,7 @@ from typing import Any, Callable
 
 import pytest
 
-from docstring2json.utils.signature_formatter import (
+from src.docstring2json.utils.signature_formatter import (
     Parameter,
     _get_param_default,
     _get_param_type,
