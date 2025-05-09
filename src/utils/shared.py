@@ -1,6 +1,6 @@
 """Shared utilities for docstring converters.
 
-This module contains functions that are shared between markdown and TSX converters.
+This module contains functions that are used in JSON converter.
 """
 
 import importlib
@@ -181,7 +181,7 @@ def write_module_json(
     module_output_dir = build_output_dir(output_dir, module_name, file_name)
     module_output_dir.mkdir(parents=True, exist_ok=True)
     content = converter_func(module, module_name)
-    output_file = module_output_dir / "data.json"  # Using data.json instead of page.tsx
+    output_file = module_output_dir / "data.json"
     output_file.write_text(content)
 
 
