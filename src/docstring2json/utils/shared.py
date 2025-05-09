@@ -1,6 +1,6 @@
 """Shared utilities for docstring converters.
 
-This module contains functions that are shared between markdown and TSX converters.
+This module contains functions that are used in JSON converter.
 """
 
 import importlib
@@ -102,7 +102,7 @@ def process_module(
         module_name: Full module name (e.g. "albumentations.augmentations.transforms")
         module_path: Relative path to the module
         output_dir: Directory to write output files
-        converter_func: Function to convert module to TSX
+        converter_func: Function to convert module to JSON
         exclude_private: Whether to exclude private members
     """
     try:
@@ -117,18 +117,16 @@ def process_module(
         if module_path.name == "__init__.py":
             return
 
-        # Build output path
-        output_path = output_dir / module_path.parent / module_path.stem
+        file_name = module_path.stem
 
-        # Create output directory
-        output_path.mkdir(parents=True, exist_ok=True)
-
-        # Generate content
-        content = converter_func(module, module_name)
-
-        # Write output file
-        output_file = output_path / "page.tsx"
-        output_file.write_text(content)
+        # Write JSON output
+        write_module_json(
+            module=module,
+            module_name=module_name,
+            output_dir=output_dir,
+            file_name=file_name,
+            converter_func=converter_func,
+        )
 
     except Exception:
         logger.exception("Failed to process module %s", module_name)
@@ -145,7 +143,7 @@ def process_package(
     Args:
         package_name: Name of the package
         output_dir: Directory to write output files
-        converter_func: Function to convert module to TSX
+        converter_func: Function to convert module to JSON
         exclude_private: Whether to exclude private members
     """
     # Get the package structure
@@ -162,3 +160,49 @@ def process_package(
                 exclude_private=exclude_private,
             )
             pbar.update(1)
+
+
+def write_module_json(
+    module: ModuleType,
+    module_name: str,
+    output_dir: Path,
+    file_name: str,
+    converter_func: Callable[[ModuleType, str], str],
+) -> None:
+    """Generate and write the JSON output for a module.
+
+    Args:
+        module: The module object to document.
+        module_name: The full name of the module.
+        output_dir: The base directory to write output files.
+        file_name: The base name of the source file (without extension).
+        converter_func: The function to convert module data to JSON string content.
+    """
+    module_output_dir = build_output_dir(output_dir, module_name, file_name)
+    module_output_dir.mkdir(parents=True, exist_ok=True)
+    content = converter_func(module, module_name)
+    output_file = module_output_dir / "data.json"
+    output_file.write_text(content)
+
+
+def build_output_dir(output_dir: Path, module_name: str, file_name: str) -> Path:
+    """Build the output directory path for a module.
+
+    Args:
+        output_dir: The base directory to write output files.
+        module_name: The full name of the module.
+        file_name: The base name of the source file.
+
+    Returns:
+        Path: The output directory path.
+    """
+    # Convert module name to path segments
+    module_segments = module_name.split(".")
+
+    # Use file name as the last segment to handle cases where
+    # the file name differs from the module name
+    if module_segments[-1] != file_name:
+        module_segments[-1] = file_name
+
+    # Build the output directory path
+    return output_dir.joinpath(*module_segments)

@@ -7,18 +7,30 @@ docstrings into TSX documentation components that use imported React components.
 import inspect
 import json
 import logging
+import sys
 from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 from types import ModuleType
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
+
+# Add the project root directory to sys.path
+src_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(src_dir))
+
+# Add the src directory itself to sys.path
+parent_dir = Path(__file__).parent.parent  # This is the src directory
+sys.path.insert(0, str(parent_dir))
 
 from google_docstring_parser import parse_google_docstring
 
-from utils.signature_formatter import (
-    format_signature,
-    get_signature_params,
-)
+from docstring2json.utils.signature_formatter import format_signature, get_signature_params
 
+# Configure logging
 logger = logging.getLogger(__name__)
+
+# Define type aliases for the imported functions
+SignatureFormatterType = Callable[[type | Callable[..., Any], list[Any]], Any]
+GetSignatureParamsType = Callable[[type | Callable[..., Any]], list[Any]]
 
 # Path to import components from, could be made configurable
 COMPONENTS_IMPORT_PATH = "@/components/DocComponents"
@@ -197,9 +209,9 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
     if not isinstance(obj, type):
         member_data["signature"]["return_type"] = (
             signature_data.return_type.__name__
-            if hasattr(signature_data.return_type, "__name__")
+            if signature_data.return_type is not None and hasattr(signature_data.return_type, "__name__")
             else str(signature_data.return_type)
-            if signature_data.return_type
+            if signature_data.return_type is not None
             else None
         )
     # Add ancestors list only for classes
@@ -255,15 +267,15 @@ def process_member(obj: type | Callable[..., Any]) -> dict[str, Any] | None:
         return None
 
 
-def file_to_tsx(module: ModuleType, module_name: str) -> str:
-    """Convert a module to a TSX document that uses imported components.
+def file_to_json(module: ModuleType, module_name: str) -> str:
+    """Convert a module to a JSON document with just the data.
 
     Args:
         module: The module object to document
         module_name: Name of the module for the heading
 
     Returns:
-        str: The TSX content
+        str: The JSON content
     """
     # Create basic module data structure with raw docstring
     module_data = {
@@ -288,47 +300,8 @@ def file_to_tsx(module: ModuleType, module_name: str) -> str:
             members_data.append(member_data)
 
     # Add members to module data
-    module_data["members"] = members_data  # type: ignore[assignment]
+    module_data["members"] = cast("Any", members_data)
 
-    # Sanitize data and convert to JSON using the helper
+    # Sanitize data and convert to JSON
     sanitized_data = sanitize_for_json(module_data)
-    module_data_str = serialize_module_data(sanitized_data, module_name)
-
-    # --- Generate Metadata --- #
-    module_doc = module.__doc__ or ""
-    # Extract first paragraph or first line as description
-    if "\n\n" in module_doc:
-        short_description = module_doc.split("\n\n")[0].replace("\n", " ").strip()
-    elif "\n" in module_doc:
-        short_description = module_doc.split("\n")[0].strip()
-    else:
-        short_description = module_doc.strip()
-
-    # Truncate description if too long
-    if len(short_description) > MAX_METADATA_DESCRIPTION_LENGTH:
-        short_description = short_description[: MAX_METADATA_DESCRIPTION_LENGTH - 3] + "..."
-
-    # Escape quotes for the JS string
-    escaped_description = short_description.replace('"', '\\"').replace("'", "\\'")
-
-    metadata_export = f"""
-import {{ Metadata }} from 'next';
-
-export const metadata: Metadata = {{
-  title: '{module_name}',
-  description: "{escaped_description}",
-}};
-"""
-    # --- End Metadata --- #
-
-    # Create the page.tsx file content
-    components = "ModuleDoc"
-    return (
-        f"import {{ {components} }} from '{COMPONENTS_IMPORT_PATH}';\n"
-        f"{metadata_export}\n"
-        "// Data structure extracted from Python docstrings\n"
-        f"const moduleData = {module_data_str};\n\n"
-        "export default function Page() {\n"
-        "  return <ModuleDoc {...moduleData} />;\n"
-        "}\n"
-    )
+    return serialize_module_data(sanitized_data, module_name)
