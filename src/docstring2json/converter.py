@@ -7,16 +7,37 @@ docstrings into TSX documentation components that use imported React components.
 import inspect
 import json
 import logging
+import sys
 from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 from types import ModuleType
 from typing import Any, TypeVar
 
 from google_docstring_parser import parse_google_docstring
 
-from src.docstring2json.utils.signature_formatter import (
-    format_signature,
-    get_signature_params,
-)
+# Smart import that works both for direct script execution and installed package
+try:
+    # First try relative import (installed package)
+    from docstring2json.utils.signature_formatter import (
+        format_signature,
+        get_signature_params,
+    )
+except ImportError:
+    # Then try with src prefix (direct script)
+    try:
+        from src.docstring2json.utils.signature_formatter import (
+            format_signature,
+            get_signature_params,
+        )
+    except ImportError:
+        # As a last resort, try to add parent directory to path
+        module_dir = Path(__file__).parent
+        if module_dir.name == "docstring2json":
+            sys.path.insert(0, str(module_dir.parent))
+            from docstring2json.utils.signature_formatter import (
+                format_signature,
+                get_signature_params,
+            )
 
 logger = logging.getLogger(__name__)
 

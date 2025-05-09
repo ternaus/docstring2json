@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from src.docstring2json.converter import file_to_json
+from docstring2json.converter import file_to_json
 
 # Test module with docstring
 MODULE_DOCSTRING = """Test module with Google-style docstring.

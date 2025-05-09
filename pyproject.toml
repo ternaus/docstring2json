@@ -21,7 +21,7 @@ maintainers = [ { name = "Vladimir Iglovikov" } ]
 authors = [
   { name = "Vladimir Iglovikov", email = "iglovikov@gmail.com" },
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",
@@ -29,6 +29,9 @@ classifiers = [
   "Operating System :: OS Independent",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
   "Topic :: Software Development :: Documentation",
@@ -62,7 +65,7 @@ docstring2json = [ "*.json", "templates/*.md", "templates/components/*.json.exam
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
-target-version = "py312"
+target-version = "py313"
 
 line-length = 120
 indent-width = 4

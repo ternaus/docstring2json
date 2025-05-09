@@ -5,21 +5,26 @@ import logging
 import sys
 from pathlib import Path
 
-# Add src directory to Python path
-src_dir = Path(__file__).parent.parent.parent / "src"
-sys.path.insert(0, str(src_dir))
-
-from utils.shared import process_package
-
-from docstring2json.converter import file_to_json
-
 # Configure logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# Add src directory to Python path
-src_dir = Path(__file__).parent.parent
-sys.path.insert(0, str(src_dir))
+# Smart import that works both for direct script execution and installed package
+try:
+    # First, try relative import (when installed as package)
+    from docstring2json.converter import file_to_json
+    from docstring2json.utils.shared import process_package
+except ImportError:
+    # If that fails, try with src prefix (when running as script)
+    try:
+        from src.docstring2json.converter import file_to_json
+        from src.docstring2json.utils.shared import process_package
+    except ImportError:
+        # Last resort - add src to path
+        src_dir = Path(__file__).parent.parent.parent
+        sys.path.insert(0, str(src_dir))
+        from src.docstring2json.converter import file_to_json
+        from src.docstring2json.utils.shared import process_package
 
 
 def main() -> None:

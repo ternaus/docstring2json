@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.docstring2json.converter import class_to_data, serialize_module_data, process_member, get_class_ancestors
+from docstring2json.converter import class_to_data, serialize_module_data, process_member, get_class_ancestors
 
 
 class SimpleClass:
@@ -313,7 +313,7 @@ def test_process_member_handles_errors():
         raise ValueError("Test error")
 
     # Use patch to temporarily replace class_to_data
-    with patch("src.docstring2json.converter.class_to_data", side_effect=mock_class_to_data):
+    with patch("docstring2json.converter.class_to_data", side_effect=mock_class_to_data):
         result = process_member(ProblemClass)
         assert result is None
 
