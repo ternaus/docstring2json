@@ -13,7 +13,7 @@ from typing import Any, TypeVar
 
 from google_docstring_parser import parse_google_docstring
 
-from src.utils.signature_formatter import (
+from src.docstring2json.utils.signature_formatter import (
     format_signature,
     get_signature_params,
 )

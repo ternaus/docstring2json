@@ -9,8 +9,9 @@ from pathlib import Path
 src_dir = Path(__file__).parent.parent.parent / "src"
 sys.path.insert(0, str(src_dir))
 
-from docstring2json.converter import file_to_json
 from utils.shared import process_package
+
+from docstring2json.converter import file_to_json
 
 # Configure logging
 logger = logging.getLogger(__name__)

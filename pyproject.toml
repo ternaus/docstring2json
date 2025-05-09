@@ -52,7 +52,7 @@ scripts.docstring2json = "docstring2json.__main__:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
-packages = [ "docstring2json", "utils" ]
+packages = [ "docstring2json" ]
 
 [tool.setuptools.package-data]
 docstring2json = [ "*.json", "templates/*.md", "templates/components/*.json.example" ]
