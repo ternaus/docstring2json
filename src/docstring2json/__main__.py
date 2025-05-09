@@ -5,16 +5,20 @@ import logging
 import sys
 from pathlib import Path
 
-# Add src directory to sys.path
+# Add the project root directory to sys.path
 src_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(src_dir))
+
+# Add the src directory itself to sys.path
+parent_dir = Path(__file__).parent.parent  # This is the src directory
+sys.path.insert(0, str(parent_dir))
 
 # Configure logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-from src.docstring2json.converter import file_to_json
-from src.docstring2json.utils.shared import process_package
+from docstring2json.converter import file_to_json
+from docstring2json.utils.shared import process_package
 
 
 def main() -> None:

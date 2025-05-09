@@ -13,13 +13,17 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, TypeVar, cast
 
-# Add src directory to sys.path
+# Add the project root directory to sys.path
 src_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(src_dir))
 
+# Add the src directory itself to sys.path
+parent_dir = Path(__file__).parent.parent  # This is the src directory
+sys.path.insert(0, str(parent_dir))
+
 from google_docstring_parser import parse_google_docstring
 
-from src.docstring2json.utils.signature_formatter import format_signature, get_signature_params
+from docstring2json.utils.signature_formatter import format_signature, get_signature_params
 
 # Configure logging
 logger = logging.getLogger(__name__)
