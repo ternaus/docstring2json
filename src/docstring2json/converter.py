@@ -32,39 +32,28 @@ logger = logging.getLogger(__name__)
 SignatureFormatterType = Callable[[type | Callable[..., Any], list[Any]], Any]
 GetSignatureParamsType = Callable[[type | Callable[..., Any]], list[Any]]
 
-# Path to import components from, could be made configurable
-COMPONENTS_IMPORT_PATH = "@/components/DocComponents"
-
 # Error messages
 ERR_EXPECTED_DICT = "Expected dict result from convert_to_serializable"
 
-# --- Constants --- #
-MAX_METADATA_DESCRIPTION_LENGTH = 160
-# --- End Constants --- #
 
 # Type definitions
 T = TypeVar("T")
 JSONSerializable = str | int | float | bool | None | dict[str, "JSONSerializable"] | list["JSONSerializable"]
 ComplexObject = JSONSerializable | object | Mapping[str | object, Any] | Sequence[Any]
 
-# Type aliases to make signatures more readable
-ClassTuple = tuple[str, type]
-FunctionTuple = tuple[str, Callable[..., Any]]
-ClassOrFunction = type | Callable[..., Any]
 
-
-def collect_module_members(module: ModuleType) -> tuple[list[ClassTuple], list[FunctionTuple]]:
+def collect_module_members(module: ModuleType) -> tuple[list[tuple[str, type]], list[tuple[str, Callable[..., Any]]]]:
     """Collect classes and functions from a module.
 
     Args:
         module: The module to collect members from
 
     Returns:
-        tuple[list[ClassTuple], list[FunctionTuple]]:
+        tuple[list[tuple[str, type]], list[tuple[str, Callable[..., Any]]]]:
             Tuple of (classes, functions) where each is a list of (name, obj) pairs
     """
-    classes: list[ClassTuple] = []
-    functions: list[FunctionTuple] = []
+    classes: list[tuple[str, type]] = []
+    functions: list[tuple[str, Callable[..., Any]]] = []
 
     for name, obj in inspect.getmembers(module):
         # Skip private members and imported objects
@@ -77,21 +66,6 @@ def collect_module_members(module: ModuleType) -> tuple[list[ClassTuple], list[F
             functions.append((name, obj))
 
     return classes, functions
-
-
-def get_source_line(obj: type | Callable[..., Any]) -> int:
-    """Get the source line number for a class or function.
-
-    Args:
-        obj: Class or function to get source line for
-
-    Returns:
-        int: Line number in the source file
-    """
-    try:
-        return obj.__code__.co_firstlineno if hasattr(obj, "__code__") else 1
-    except AttributeError:
-        return 1
 
 
 def get_source_code(obj: type | Callable[..., Any]) -> str | None:
@@ -160,9 +134,8 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
     params = get_signature_params(obj)
     # Get signature data
     signature_data = format_signature(obj, params)
-    # Get source code and line number
+    # Get source code only
     source_code = get_source_code(obj)
-    source_line = get_source_line(obj)
 
     # Parse docstring
     docstring = obj.__doc__ or ""
@@ -198,11 +171,9 @@ def class_to_data(obj: type | Callable[..., Any]) -> dict[str, Any]:
         "name": obj_name,
         "type": "class" if isinstance(obj, type) else "function",
         "signature": {
-            "name": signature_data.name,
             "params": signature_params,
         },
         "docstring": parsed,
-        "source_line": source_line,
     }
 
     # Add return_type only for functions
