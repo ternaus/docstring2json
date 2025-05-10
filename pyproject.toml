@@ -5,7 +5,7 @@ requires = [ "setuptools>=45", "wheel" ]
 
 [project]
 name = "docstring2json"
-version = "0.0.8"
+version = "0.0.9"
 description = "A tool to convert Google-style docstrings to JSON format"
 readme = "README.md"
 keywords = [
@@ -21,7 +21,7 @@ maintainers = [ { name = "Vladimir Iglovikov" } ]
 authors = [
   { name = "Vladimir Iglovikov", email = "iglovikov@gmail.com" },
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",
@@ -29,6 +29,7 @@ classifiers = [
   "Operating System :: OS Independent",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
   "Topic :: Software Development :: Documentation",
@@ -61,7 +62,7 @@ docstring2json = [ "*.json", "templates/*.md", "templates/components/*.json.exam
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
-target-version = "py313"
+target-version = "py312"
 
 line-length = 120
 indent-width = 4
@@ -134,7 +135,7 @@ lint.dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 lint.pydocstyle.convention = "google"
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.12"
 ignore_missing_imports = true
 follow_imports = "silent"
 warn_redundant_casts = true
